@@ -76,7 +76,7 @@ def test_incremental_scan_only_reprocesses_changed(db: Database, tree: Path) -> 
     assert stats.files_new == 0
     assert stats.files_changed == 1
     with db.session() as s:
-        hashes = dict(s.execute(select(File.name, File.content_hash)).tuples())
+        hashes = dict(s.execute(select(File.name, File.content_hash)).all())
     assert hashes["notas.txt"] is None  # invalidado
     assert hashes["main.py"] == "y" * 64  # conservado
 
