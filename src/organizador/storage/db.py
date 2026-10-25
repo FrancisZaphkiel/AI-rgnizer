@@ -66,6 +66,10 @@ class Database:
     def migrate(self) -> None:
         upgrade(self.engine)
 
+    def new_session(self) -> Session:
+        """Sesión sin transacción automática, para procesos por lotes que confirman a mano."""
+        return self._sessions()
+
     @contextmanager
     def session(self) -> Iterator[Session]:
         """Sesión transaccional: commit al salir, rollback ante excepción."""
