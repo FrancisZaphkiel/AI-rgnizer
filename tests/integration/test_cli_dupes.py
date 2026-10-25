@@ -56,6 +56,18 @@ def test_dupes_requires_a_root(isolated_home: Path) -> None:
     assert main(["dupes"]) == 2
 
 
+@pytest.mark.parametrize("command", ["dupes", "scan"])
+def test_missing_root_reports_error_without_traceback(
+    isolated_home: Path, command: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (isolated_home / "Música").mkdir()
+    missing = isolated_home / "home/francisco/Música"
+    assert main([command, str(isolated_home / "Música"), str(missing)]) == 2
+    err = capsys.readouterr().err
+    assert f"no es una carpeta: {missing}" in err
+    assert "Traceback" not in err
+
+
 def test_dupes_trash_declined_keeps_everything(
     isolated_home: Path, dupes: tuple[Path, ...], monkeypatch: pytest.MonkeyPatch
 ) -> None:

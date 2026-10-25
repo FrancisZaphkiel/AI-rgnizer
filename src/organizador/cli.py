@@ -50,15 +50,29 @@ def _cmd_paths(_ctx: AppContext, _args: argparse.Namespace) -> int:
     return 0
 
 
+def _resolve_roots(ctx: AppContext, args: argparse.Namespace) -> list[Path] | None:
+    """Carpetas indicadas (o ``indexed_dirs``); ``None`` si falta alguna, tras avisar de todas."""
+    roots: list[Path] = [r.expanduser() for r in args.roots] or ctx.settings.indexed_dirs
+    if not roots:
+        print("Indica una carpeta o configura indexed_dirs en config.toml", file=sys.stderr)
+        return None
+    missing = [r for r in roots if not r.is_dir()]
+    for root in missing:
+        print(f"error: no es una carpeta: {root}", file=sys.stderr)
+    if missing:
+        print("Si la ruta tiene espacios, ponla entre comillas.", file=sys.stderr)
+        return None
+    return roots
+
+
 def _cmd_scan(ctx: AppContext, args: argparse.Namespace) -> int:
     def progress(stats: ScanStats) -> None:
         print(f"\r{stats.files_seen} archivos…", end="", file=sys.stderr, flush=True)
 
-    scanner = Scanner(ctx.db, ctx.settings.scan)
-    roots: list[Path] = args.roots or ctx.settings.indexed_dirs
-    if not roots:
-        print("Indica una carpeta o configura indexed_dirs en config.toml", file=sys.stderr)
+    roots = _resolve_roots(ctx, args)
+    if roots is None:
         return 2
+    scanner = Scanner(ctx.db, ctx.settings.scan)
     for root in roots:
         try:
             stats = scanner.scan(root, progress=progress)
@@ -146,9 +160,8 @@ def _trash_groups(
 
 
 def _cmd_dupes(ctx: AppContext, args: argparse.Namespace) -> int:
-    roots: list[Path] = args.roots or ctx.settings.indexed_dirs
-    if not roots:
-        print("Indica una carpeta o configura indexed_dirs en config.toml", file=sys.stderr)
+    roots = _resolve_roots(ctx, args)
+    if roots is None:
         return 2
     if not args.no_scan and _cmd_scan(ctx, argparse.Namespace(roots=roots)) != 0:
         return 1
