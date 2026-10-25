@@ -15,6 +15,7 @@ def _file(
     path: str,
     *,
     mtime: int = 0,
+    birth: int | None = None,
     inode: int | None = None,
     nlink: int = 1,
     exclusive: int = 100,
@@ -26,6 +27,7 @@ def _file(
         device=1,
         inode=inode if inode is not None else hash(path) & 0xFFFF,
         nlink=nlink,
+        birth_ns=birth,
         exclusive_bytes=exclusive,
     )
 
@@ -87,7 +89,30 @@ def test_prefers_name_without_copy_marker_then_oldest() -> None:
         [_file("/home/u/Documentos/x/a.pdf", mtime=5), _file("/home/u/Documentos/y/a.pdf", mtime=2)]
     )
     assert choice.keep.path == Path("/home/u/Documentos/y/a.pdf")
-    assert choice.reason == "es la más antigua"
+    assert choice.reason == "se creó antes que las demás"
+
+
+def test_birth_time_beats_preserved_mtime() -> None:
+    # Copia con la mtime conservada (Dolphin, cp -p) y ruta más corta: gana el original.
+    original = _file("/home/u/Música/Techno Syndrome.mp3", mtime=10, birth=10)
+    copy = _file("/home/u/Doc/musica.mp3", mtime=10, birth=99)
+    choice = POLICY.choose([copy, original])
+    assert choice.keep == original
+    assert choice.reason == "se creó antes que las demás"
+
+
+def test_without_birth_time_falls_back_to_mtime() -> None:
+    old = _file("/home/u/Otros/largo/a.pdf", mtime=1)
+    new = _file("/home/u/Otros/a.pdf", mtime=5)
+    assert POLICY.choose([new, old]).keep == old
+
+
+def test_same_birth_time_then_mtime_decides() -> None:
+    a = _file("/home/u/Otros/largo/a.pdf", mtime=1, birth=7)
+    b = _file("/home/u/Otros/a.pdf", mtime=5, birth=7)
+    choice = POLICY.choose([b, a])
+    assert choice.keep == a
+    assert choice.reason == "es la modificada hace más tiempo"
 
 
 def test_choice_is_independent_of_input_order() -> None:

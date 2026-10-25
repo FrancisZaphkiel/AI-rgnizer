@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from organizador.core.config import DuplicateSettings
 from organizador.duplicates import hashing
+from organizador.duplicates.birthtime import birth_time_ns
 from organizador.duplicates.keep import KeepPolicy
 from organizador.duplicates.space import disk_usage
 from organizador.storage import Database
@@ -52,6 +53,8 @@ class DuplicateFile:
     device: int
     inode: int
     nlink: int
+    # Fecha de creación (statx); None si el sistema de archivos no la guarda.
+    birth_ns: int | None = None
     # Bytes que ocupa el archivo sin contar extents compartidos (reflinks, instantáneas).
     exclusive_bytes: int = 0
 
@@ -160,6 +163,14 @@ class _Candidate:
             self.content_hash = digest
 
 
+def _birth_or_none(path: Path) -> int | None:
+    try:
+        return birth_time_ns(path)
+    except OSError as exc:
+        log.debug("No se pudo leer la fecha de creación de %s: %s", path, exc)
+        return None
+
+
 def _hash_of(links: Sequence[_Candidate], kind: HashKind) -> str:
     digest = links[0].get_hash(kind)
     if digest is None:  # pragma: no cover - hash_stage solo devuelve inodes con hash
@@ -224,6 +235,7 @@ class DuplicateFinder:
                     device=c.device,
                     inode=c.inode,
                     nlink=c.nlink,
+                    birth_ns=_birth_or_none(c.path),
                     exclusive_bytes=usage[c.inode_key],
                 )
             )

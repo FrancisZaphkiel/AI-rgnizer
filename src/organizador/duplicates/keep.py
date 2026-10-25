@@ -5,8 +5,10 @@ Es solo una recomendación: el usuario siempre puede elegir otra. Criterios, en 
 1. dentro de una carpeta organizada (indexada y no vigilada);
 2. fuera de las carpetas vigiladas (Descargas);
 3. nombre sin sufijo de copia: ``(1)``, ``copia``, ``copy``, ``Copia de …``;
-4. la más antigua (``mtime``);
-5. desempate determinista: ruta más corta y, después, orden alfabético.
+4. la creada antes (``btime``): ``mtime`` no sirve para esto, porque Dolphin y ``cp -p``
+   la conservan al copiar; si el sistema de archivos no guarda ``btime``, se usa ``mtime``;
+5. la modificada antes (``mtime``);
+6. desempate determinista: ruta más corta y, después, orden alfabético.
 """
 
 from __future__ import annotations
@@ -40,6 +42,9 @@ class KeepCandidate(Protocol):
     @property
     def mtime_ns(self) -> int: ...
 
+    @property
+    def birth_ns(self) -> int | None: ...
+
 
 @dataclass(frozen=True, slots=True)
 class KeepChoice[T: KeepCandidate]:
@@ -64,7 +69,11 @@ class KeepPolicy:
             (not organized, "está en una carpeta organizada"),
             (watched, "está fuera de las carpetas vigiladas"),
             (has_copy_marker(c.path.name), "su nombre no indica que sea una copia"),
-            (c.mtime_ns, "es la más antigua"),
+            (
+                c.birth_ns if c.birth_ns is not None else c.mtime_ns,
+                "se creó antes que las demás",
+            ),
+            (c.mtime_ns, "es la modificada hace más tiempo"),
             (len(str(c.path)), "tiene la ruta más corta"),
             (str(c.path), "orden alfabético"),
         )

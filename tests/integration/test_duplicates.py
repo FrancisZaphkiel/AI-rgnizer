@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from organizador.actions.errors import SourceChangedError
 from organizador.core.config import DuplicateSettings, ScanSettings
 from organizador.duplicates import DuplicateFinder, DuplicateReport, KeepPolicy, trash_redundant
 from organizador.duplicates import finder as finder_module
+from organizador.duplicates.birthtime import birth_time_ns
 from organizador.duplicates.space import disk_usage
 from organizador.scanner import Scanner
 from organizador.storage import Database
@@ -293,6 +295,25 @@ def test_large_sparse_files(db: Database, root: Path) -> None:
     assert _groups(report) == [{"a.img", "b.img"}]
     assert report.groups[0].size == size
     assert report.groups[0].recoverable_bytes == 0  # sparse: no ocupan bloques
+
+
+def test_copy_with_preserved_mtime_keeps_original(db: Database, root: Path) -> None:
+    original = _write(root / "Otros/carpeta larga/Techno Syndrome.mp3", os.urandom(10_000))
+    time.sleep(0.01)  # btime con resolución de nanosegundos, pero por si acaso
+    copy = _write(root / "Otros/musica.mp3", original.read_bytes())
+    shutil.copystat(original, copy)  # como cp -p o Dolphin: misma mtime
+    if birth_time_ns(copy) is None:
+        pytest.skip("el sistema de archivos no guarda la fecha de creación")
+
+    (group,) = _find(db, root).groups
+
+    assert group.keep.path == original
+    assert group.keep_reason == "se creó antes que las demás"
+
+
+def test_birth_time_of_missing_file_raises(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        birth_time_ns(tmp_path / "no-existe")
 
 
 # --- reflinks (Btrfs/XFS) ----------------------------------------------------------
