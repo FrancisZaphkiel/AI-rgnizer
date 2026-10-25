@@ -1,0 +1,97 @@
+[project]
+name = "organizador"
+version = "0.0.1"
+description = "Organizador inteligente de archivos para Linux: aprende tus costumbres, sugiere destinos y detecta duplicados."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Francisco Javier Tropa Huircan" }]
+requires-python = ">=3.12"
+classifiers = [
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Environment :: X11 Applications :: Qt",
+]
+dependencies = [
+    "sqlalchemy>=2.0.36",
+    "alembic>=1.14",
+    "send2trash>=1.8.3",
+    "blake3>=1.0",
+    "tomli-w>=1.1",
+]
+
+[project.scripts]
+organizador = "organizador.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "hypothesis>=6.120",
+    "pyfakefs>=5.7",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pre-commit>=4.0",
+]
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/organizador"]
+
+# --- Calidad -----------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "B", "UP", "SIM", "RUF", "PTH", "N", "C4", "PL", "TID",
+]
+ignore = [
+    "PLR0913", # muchos argumentos: aceptable en constructores de servicio
+    "PLR2004", # números mágicos en tests y umbrales documentados
+    "RUF001", "RUF002", "RUF003", # caracteres ambiguos: el proyecto está en español
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PLR2004", "S101", "PLC0415"]
+"src/organizador/storage/migrations/**" = ["N999"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"os.remove".msg = "Prohibido: los borrados solo se permiten en organizador.actions.fsops."
+"os.unlink".msg = "Prohibido: los borrados solo se permiten en organizador.actions.fsops."
+"shutil.rmtree".msg = "Prohibido: los borrados solo se permiten en organizador.actions.fsops."
+"shutil.move".msg = "Usa organizador.actions.fsops.move_no_replace (no sobrescribe)."
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+packages = ["organizador"]
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["send2trash.*", "blake3.*"]
+ignore_missing_imports = true
+
+# --- Pruebas -----------------------------------------------------------------
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "integration: pruebas que tocan el sistema de archivos real (tmp_path)",
+    "slow: pruebas lentas (benchmarks, archivos grandes)",
+]
+
+[tool.coverage.run]
+source = ["organizador"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
