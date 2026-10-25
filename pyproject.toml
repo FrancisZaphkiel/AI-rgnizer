@@ -14,7 +14,6 @@ classifiers = [
 dependencies = [
     "sqlalchemy>=2.0.36",
     "alembic>=1.14",
-    "send2trash>=1.8.3",
     "blake3>=1.0",
     "tomli-w>=1.1",
 ]
@@ -60,6 +59,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR2004", "S101", "PLC0415"]
 "src/organizador/storage/migrations/**" = ["N999"]
+"src/organizador/actions/fsops.py" = ["TID251", "PTH108"] # único módulo con borrados auditados
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "os.remove".msg = "Prohibido: los borrados solo se permiten en organizador.actions.fsops."
@@ -75,7 +75,7 @@ packages = ["organizador"]
 warn_unreachable = true
 
 [[tool.mypy.overrides]]
-module = ["send2trash.*", "blake3.*"]
+module = ["blake3.*"]
 ignore_missing_imports = true
 
 # --- Pruebas -----------------------------------------------------------------

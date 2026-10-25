@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import threading
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -17,14 +16,6 @@ from organizador.storage.models import Directory, File, ScanError
 # Nota: se usa el sistema de archivos real (tmp_path) en lugar de pyfakefs porque
 # SQLite accede al disco desde código C, fuera del alcance de pyfakefs.
 pytestmark = pytest.mark.integration
-
-
-@pytest.fixture
-def db(tmp_path: Path) -> Iterator[Database]:
-    database = Database(tmp_path / "index.db")
-    database.migrate()
-    yield database
-    database.dispose()
 
 
 @pytest.fixture

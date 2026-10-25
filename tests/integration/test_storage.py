@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from sqlalchemy import inspect, select, text
 
@@ -10,13 +8,6 @@ from organizador.storage.db import downgrade, upgrade
 from organizador.storage.models import ActionJournal, ActionKind, ActionState, Base
 
 pytestmark = pytest.mark.integration
-
-
-@pytest.fixture
-def db(tmp_path: Path) -> Database:
-    database = Database(tmp_path / "test.db")
-    database.migrate()
-    return database
 
 
 def test_migration_creates_all_tables(db: Database) -> None:

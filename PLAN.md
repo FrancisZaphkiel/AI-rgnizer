@@ -33,10 +33,10 @@ Construir una aplicación de escritorio para Linux (probada en **CachyOS**, con 
 | Origen de descarga | atributos extendidos `user.xdg.origin.url` (`os.getxattr`) | URL de origen como feature **opcional** (Chromium lo escribe; verificar Firefox); nunca se asume presente ni fiable |
 | Duplicados exactos | **xxhash** (pre-filtro) + **BLAKE3**/SHA‑256 | Comparación rápida y fiable |
 | Duplicados similares | **imagehash** (pHash/dHash) para imágenes; `rapidfuzz` para nombres | Fotos redimensionadas, copias "(1)" |
-| Papelera | **send2trash** (spec freedesktop Trash) | Archivos recuperables desde Dolphin/Nautilus; validar comportamiento en subvolúmenes Btrfs y volúmenes externos (`$topdir/.Trash-$UID`) |
+| Papelera | Implementación propia de la spec **freedesktop Trash 1.0** (`actions/trash.py`) | Archivos recuperables desde Dolphin/Nautilus. Se descartó `send2trash`: lee `XDG_DATA_HOME` al importarse, no devuelve la ruta en la papelera (necesaria para deshacer) y copia entre dispositivos. En subvolúmenes Btrfs (`EXDEV`) usa `$topdir/.Trash-$UID` |
 | Patrones de nomenclatura | `re`, `dateparser` | Inferir plantillas tipo `AAAA-MM-DD_proyecto_vN` |
 | Servicio en segundo plano | Unidad **systemd --user** | Vigilancia persistente sin GUI abierta |
-| Pruebas | **pytest**, `pytest-qt`, `pytest-cov`, `hypothesis`, `pyfakefs` | Unitarias, GUI e integración |
+| Pruebas | **pytest**, `pytest-qt`, `pytest-cov`, `hypothesis`, `pyfakefs` | Unitarias, GUI e integración (lo que toca SQLite usa `tmp_path` real: pyfakefs no intercepta el código C de SQLite) |
 | Calidad | **ruff**, **mypy**, **pre-commit** | Estilo y tipado |
 | Empaquetado | **PKGBUILD** (Arch/CachyOS), opcional AppImage/Flatpak | Instalación nativa |
 | CI | GitHub Actions / GitLab CI (Ubuntu + contenedor Arch) | Tests en cada PR |
@@ -189,16 +189,16 @@ Cada fase termina con una **batería de pruebas obligatoria**; la fase no se cie
   - el registro se escribe (y hace commit) **antes** de tocar el archivo;
   - recuperación al arrancar: las operaciones `pending`/`in_progress` se completan o revierten según el estado real del disco.
 - `undo` seguro: verifica que el archivo sigue donde se espera y no ha cambiado (tamaño/mtime/hash); nunca sobrescribe el origen si ya existe algo ahí (propone nombre alternativo).
-- Movimiento entre sistemas de archivos (incluido entre subvolúmenes Btrfs): no se asume atómico; una **única función auditada** `_copy_verify_unlink` copia, hace `fsync`, compara hash y solo entonces elimina el origen.
+- Movimiento entre sistemas de archivos (incluido entre subvolúmenes Btrfs): no se asume atómico; la función auditada `fsops.copy_verify_unlink` copia a un temporal, hace `fsync`, compara hash, publica con `renameat2(RENAME_NOREPLACE)` y solo entonces elimina el origen. Todos los borrados viven en `actions/fsops.py` (ruff `TID251` los prohíbe en el resto).
 - Bloqueo por ruta para impedir operaciones concurrentes sobre el mismo archivo.
 - Manejo de colisiones de nombre y permisos.
 
 **Pruebas de cierre**
-- [ ] Unitarias del scanner con `pyfakefs` (exclusiones, symlinks, archivos sin permiso).
+- [ ] Pruebas del scanner (exclusiones, symlinks, ciclos, montajes, archivos sin permiso).
 - [ ] Escaneo incremental: solo reprocesa archivos modificados.
 - [ ] Mover + deshacer restaura ruta y nombre exactos (propiedad verificada con `hypothesis`).
 - [ ] `trash` deja el archivo en la papelera freedesktop correspondiente (`~/.local/share/Trash` o `$topdir/.Trash-$UID` en otro subvolumen/volumen) con su `.trashinfo`; caso de subvolumen Btrfs cubierto.
-- [ ] `os.remove`/`unlink` solo se invocan desde `_copy_verify_unlink` (test con mock que falla ante cualquier otra llamada); nunca desde `trash` ni duplicados.
+- [ ] `os.remove`/`unlink` (incluido `Path.unlink`) solo se invocan desde `organizador.actions.fsops` (test que audita cada llamada); ningún archivo del usuario se borra: solo origenes ya copiados y verificados, temporales propios y `.trashinfo` tras restaurar.
 - [ ] Movimiento entre sistemas de archivos con fallo inyectado tras la copia no pierde el origen.
 - [ ] Inyección de fallos (corte en cada estado del journal) + reinicio: la recuperación deja cada archivo en el origen o en el destino, nunca perdido ni duplicado.
 - [ ] `undo` se niega (sin daño) si el archivo fue modificado o si el origen está ocupado.
