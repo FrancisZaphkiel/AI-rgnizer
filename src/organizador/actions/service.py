@@ -115,11 +115,20 @@ class ActionService:
                 raise DestinationOccupiedError(target, free_name(target))
             return self._relocate(ActionKind.RENAME, source, target)
 
-    def trash(self, source: Path) -> ActionResult:
-        """Envía a la papelera del sistema. Nunca borra."""
+    def trash(self, source: Path, *, expected_hash: str | None = None) -> ActionResult:
+        """Envía a la papelera del sistema. Nunca borra.
+
+        Con ``expected_hash`` se calcula el hash completo (sin límite de tamaño) bajo el
+        bloqueo y se rechaza la operación si el contenido no coincide.
+        """
         source = self._validate_source(source)
         with self._guard(source):
-            fp = self._fingerprint(source)
+            if expected_hash is None:
+                fp = self._fingerprint(source)
+            else:
+                fp = Fingerprint.of(source, hash_max_bytes=None)
+                if fp.content_hash != expected_hash:
+                    raise SourceChangedError(source)
             entry = self._journal.begin(ActionKind.TRASH, source, None, fp, origin=self._origin)
             self._journal.transition(entry.id, ActionState.IN_PROGRESS)
             try:

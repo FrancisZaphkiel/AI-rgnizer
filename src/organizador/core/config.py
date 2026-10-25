@@ -43,11 +43,20 @@ class ActionSettings:
 
 
 @dataclass(slots=True)
+class DuplicateSettings:
+    # Los archivos vacíos (o diminutos) no liberan espacio: no se buscan por defecto.
+    min_size: int = 1
+    # Bytes leídos del principio y del final para el hash parcial (solo filtro).
+    partial_bytes: int = 64 * 1024
+
+
+@dataclass(slots=True)
 class Settings:
     indexed_dirs: list[Path] = field(default_factory=list)
     watched_dirs: list[Path] = field(default_factory=lambda: [downloads_dir()])
     scan: ScanSettings = field(default_factory=ScanSettings)
     actions: ActionSettings = field(default_factory=ActionSettings)
+    duplicates: DuplicateSettings = field(default_factory=DuplicateSettings)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -63,6 +72,7 @@ class Settings:
             watched_dirs=[Path(p) for p in data.get("watched_dirs", defaults.watched_dirs)],
             scan=ScanSettings(**data.get("scan", {})),
             actions=ActionSettings(**data.get("actions", {})),
+            duplicates=DuplicateSettings(**data.get("duplicates", {})),
         )
 
 
