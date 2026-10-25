@@ -6,13 +6,14 @@ import argparse
 import logging
 import sys
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from organizador import __version__
 from organizador.actions import ActionError, ActionService
 from organizador.core.config import Settings, load_settings
 from organizador.core.paths import AppPaths
+from organizador.duplicates import DuplicateFinder, DuplicateGroup, KeepPolicy, trash_redundant
 from organizador.scanner import Scanner, ScanStats
 from organizador.storage import Database
 
@@ -49,15 +50,29 @@ def _cmd_paths(_ctx: AppContext, _args: argparse.Namespace) -> int:
     return 0
 
 
+def _resolve_roots(ctx: AppContext, args: argparse.Namespace) -> list[Path] | None:
+    """Carpetas indicadas (o ``indexed_dirs``); ``None`` si falta alguna, tras avisar de todas."""
+    roots: list[Path] = [r.expanduser() for r in args.roots] or ctx.settings.indexed_dirs
+    if not roots:
+        print("Indica una carpeta o configura indexed_dirs en config.toml", file=sys.stderr)
+        return None
+    missing = [r for r in roots if not r.is_dir()]
+    for root in missing:
+        print(f"error: no es una carpeta: {root}", file=sys.stderr)
+    if missing:
+        print("Si la ruta tiene espacios, ponla entre comillas.", file=sys.stderr)
+        return None
+    return roots
+
+
 def _cmd_scan(ctx: AppContext, args: argparse.Namespace) -> int:
     def progress(stats: ScanStats) -> None:
         print(f"\r{stats.files_seen} archivos…", end="", file=sys.stderr, flush=True)
 
-    scanner = Scanner(ctx.db, ctx.settings.scan)
-    roots: list[Path] = args.roots or ctx.settings.indexed_dirs
-    if not roots:
-        print("Indica una carpeta o configura indexed_dirs en config.toml", file=sys.stderr)
+    roots = _resolve_roots(ctx, args)
+    if roots is None:
         return 2
+    scanner = Scanner(ctx.db, ctx.settings.scan)
     for root in roots:
         try:
             stats = scanner.scan(root, progress=progress)
@@ -70,6 +85,114 @@ def _cmd_scan(ctx: AppContext, args: argparse.Namespace) -> int:
             f"{stats.files_removed} eliminados del índice), {stats.errors} errores"
         )
     return 0
+
+
+def human_size(n: int) -> str:
+    size = float(n)
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if size < 1024 or unit == "GiB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    raise AssertionError("inalcanzable")  # pragma: no cover
+
+
+def _print_group(index: int, group: DuplicateGroup) -> None:
+    print(
+        f"\nGrupo {index} · {len(group.files)} archivos de {human_size(group.size)} · "
+        f"recuperable {human_size(group.recoverable_bytes)}"
+    )
+    hardlinks = set(group.hardlinks_of_keep)
+    for n, f in enumerate(group.files, start=1):
+        if f is group.keep:
+            label, note = "conservar", f"  ({group.keep_reason})"
+        elif f in hardlinks:
+            label, note = "enlace", "  (hardlink de la copia conservada: no ocupa espacio)"
+        else:
+            label, note = "sobra", ""
+        print(f"  [{n}] {label:<9} {f.path}{note}")
+
+
+def _ask_group(group: DuplicateGroup) -> DuplicateGroup | None:
+    """Confirmación por grupo: s = enviar sobrantes, n = saltar, número = conservar otra."""
+    while True:
+        try:
+            answer = input("  ¿Enviar las copias sobrantes a la papelera? [s/N/nº a conservar] ")
+        except EOFError:
+            return None
+        answer = answer.strip().lower()
+        if answer in {"s", "si", "sí", "y"}:
+            return group
+        if answer in {"", "n", "no"}:
+            return None
+        if answer.isdigit() and 1 <= int(answer) <= len(group.files):
+            group = group.with_keep(group.files[int(answer) - 1])
+            print(f"  conservar: {group.keep.path}")
+            continue
+        print("  Respuesta no válida.")
+
+
+def _trash_groups(
+    service: ActionService, groups: Sequence[DuplicateGroup], *, assume_yes: bool
+) -> int:
+    failures = trashed = 0
+    for index, proposed in enumerate(groups, start=1):
+        group: DuplicateGroup | None = proposed
+        if not assume_yes:
+            _print_group(index, proposed)
+            group = _ask_group(proposed)
+        if group is None:
+            continue
+        try:
+            result = trash_redundant(group, service)
+        except ActionError as exc:
+            print(f"  grupo {index} omitido: {exc}", file=sys.stderr)
+            failures += 1
+            continue
+        for action in result.trashed:
+            print(f"  {action.action_id[:8]}  {action.source} → papelera")
+        for dup, error in result.failed:
+            print(f"  error con {dup.path}: {error}", file=sys.stderr)
+        failures += len(result.failed)
+        trashed += len(result.trashed)
+    if trashed:
+        print(f"{trashed} archivos enviados a la papelera. Para restaurar uno: organizador undo ID")
+    return 1 if failures else 0
+
+
+def _cmd_dupes(ctx: AppContext, args: argparse.Namespace) -> int:
+    roots = _resolve_roots(ctx, args)
+    if roots is None:
+        return 2
+    if not args.no_scan and _cmd_scan(ctx, argparse.Namespace(roots=roots)) != 0:
+        return 1
+
+    settings = ctx.settings
+    duplicates = settings.duplicates
+    if args.min_size is not None:
+        duplicates = replace(duplicates, min_size=args.min_size)
+    policy = KeepPolicy(settings.indexed_dirs, settings.watched_dirs)
+    try:
+        report = DuplicateFinder(ctx.db, duplicates, policy).find(roots)
+    except KeyboardInterrupt:
+        print("\nbúsqueda cancelada", file=sys.stderr)
+        return 130
+
+    interactive = args.trash and not args.yes
+    if not interactive:  # en modo interactivo cada grupo se muestra al preguntar
+        for index, group in enumerate(report.groups, start=1):
+            _print_group(index, group)
+    stats = report.stats
+    print(
+        f"\n{len(report.groups)} grupos de duplicados exactos; "
+        f"recuperable {human_size(report.recoverable_bytes)}. "
+        f"Leídos {human_size(stats.bytes_hashed)} ({stats.full_hashed} hashes completos)."
+    )
+    if stats.stale:
+        print(f"{stats.stale} archivos cambiaron desde el escaneo y se omitieron.")
+    if not args.trash:
+        return 0
+
+    return _trash_groups(ctx.actions(), report.groups, assume_yes=args.yes)
 
 
 def _cmd_mv(ctx: AppContext, args: argparse.Namespace) -> int:
@@ -131,6 +254,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = add("scan", _cmd_scan, "indexa carpetas (solo lectura)")
     p.add_argument("roots", nargs="*", type=Path)
+
+    p = add(
+        "dupes", _cmd_dupes, "busca duplicados exactos y, opcionalmente, los envía a la papelera"
+    )
+    p.add_argument("roots", nargs="*", type=Path)
+    p.add_argument("--no-scan", action="store_true", help="usa el índice sin reescanear")
+    p.add_argument("--min-size", type=int, metavar="BYTES", help="ignora archivos más pequeños")
+    p.add_argument(
+        "--trash", action="store_true", help="ofrece enviar las copias sobrantes a la papelera"
+    )
+    p.add_argument("--yes", action="store_true", help="con --trash, no pide confirmación")
 
     p = add("mv", _cmd_mv, "mueve un archivo a una carpeta (sin sobrescribir)")
     p.add_argument("source", type=Path)

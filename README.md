@@ -4,7 +4,7 @@ Organizador inteligente de archivos para Linux (probado en CachyOS). Aprende có
 tus carpetas, sugiere destinos para lo que llega a Descargas y detecta duplicados. Todo es local
 y reversible: nada se borra, solo se envía a la papelera.
 
-Estado: en desarrollo (Fase 1). Ver [`PLAN.md`](PLAN.md).
+Estado: en desarrollo (Fase 2: duplicados). Ver [`PLAN.md`](PLAN.md).
 
 ## Instalación para desarrollo (CachyOS / Arch)
 
@@ -21,6 +21,8 @@ uv run organizador paths             # rutas XDG de la aplicación
 uv run organizador scan ~/Documentos # indexa una carpeta (no modifica archivos)
 uv run organizador mv ARCHIVO DESTINO
 uv run organizador trash ARCHIVO     # envía a la papelera del sistema
+uv run organizador dupes ~/Documentos          # duplicados exactos (solo muestra)
+uv run organizador dupes ~/Documentos --trash  # pregunta por grupo y envía sobrantes a la papelera
 uv run organizador history
 uv run organizador undo ID
 ```
