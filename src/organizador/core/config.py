@@ -166,10 +166,29 @@ def load_settings(paths: AppPaths) -> Settings:
 
 def save_settings(paths: AppPaths, settings: Settings) -> None:
     """Escribe la configuración de forma atómica (archivo temporal + rename)."""
+    _write_toml(paths, settings.to_dict())
+
+
+def set_config_value(paths: AppPaths, key: str, value: Any) -> None:
+    """Cambia una clave de primer nivel sin escribir el resto de valores por defecto.
+
+    Los comentarios de ``config.toml`` se pierden (``tomli_w`` no los conserva).
+    """
+    try:
+        with paths.config_file.open("rb") as fh:
+            data = tomllib.load(fh)
+    except FileNotFoundError:
+        data = {}
+    data[key] = value
+    Settings.from_dict(data)  # valida antes de escribir
+    _write_toml(paths, data)
+
+
+def _write_toml(paths: AppPaths, data: dict[str, Any]) -> None:
     paths.ensure()
     tmp = paths.config_file.with_suffix(".toml.tmp")
     with tmp.open("wb") as fh:
-        tomli_w.dump(settings.to_dict(), fh)
+        tomli_w.dump(data, fh)
         fh.flush()
         os.fsync(fh.fileno())
     tmp.replace(paths.config_file)

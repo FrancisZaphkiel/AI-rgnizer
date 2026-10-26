@@ -8,10 +8,17 @@ dos sugerencias.
 
 Solo se vigilan los archivos directamente dentro de cada carpeta: lo que hay en
 subcarpetas (un zip extraído, un proyecto clonado) ya está organizado por alguien.
+
+Las carpetas pueden estar en discos externos de cualquier sistema de archivos. Cada
+``rewatch_seconds`` se comprueba si cada carpeta está disponible: al conectar el disco
+se empieza a vigilar y se relee entera; al desconectarlo se deja de vigilar, y sus
+sugerencias pendientes se conservan. En sistemas de red (NFS, SMB, sshfs) inotify no ve
+los cambios hechos desde otro equipo, así que se sondean.
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import threading
 import time
@@ -21,6 +28,8 @@ from pathlib import Path
 
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
+from watchdog.observers.api import BaseObserver, ObservedWatch
+from watchdog.observers.polling import PollingObserver
 
 from organizador.actions import ActionError
 from organizador.core.config import WatchSettings
@@ -28,9 +37,13 @@ from organizador.downloads.completion import Arrival, StabilityTracker
 from organizador.downloads.queue import SuggestionQueue
 from organizador.features import FileFeatures, extract_features
 from organizador.learning.model import Prediction
+from organizador.scanner.mounts import filesystem_of
 from organizador.storage.models import DownloadSuggestion, SuggestionState
 
 log = logging.getLogger(__name__)
+
+# Segundos entre lecturas de una carpeta sondeada (sistemas de archivos de red).
+NETWORK_POLL_SECONDS = 5.0
 
 # Solo estas fuentes dan una probabilidad calibrada (o una orden explícita del usuario).
 AUTO_SOURCES = frozenset({"configuración", "regla", "modelo"})
@@ -85,16 +98,21 @@ class DownloadMonitor:
     def reconcile(self, now: float | None = None) -> None:
         """Relee las carpetas vigiladas y caduca las sugerencias de archivos que ya no están."""
         for directory in self.dirs:
-            try:
-                entries = list(directory.iterdir())
-            except OSError as exc:
-                log.warning("No se puede leer %s: %s", directory, exc)
-                continue
-            for entry in entries:
-                self.notice(entry, now)
+            self._reconcile_dir(directory, now)
         expired = self._queue.expire_missing()
         if expired:
             log.info("%d sugerencias caducadas (el archivo ya no está)", expired)
+
+    def _reconcile_dir(self, directory: Path, now: float | None) -> None:
+        if not directory.is_dir():
+            return  # disco desconectado: nada que leer
+        try:
+            entries = list(directory.iterdir())
+        except OSError as exc:
+            log.warning("No se puede leer %s: %s", directory, exc)
+            return
+        for entry in entries:
+            self.notice(entry, now)
 
     @property
     def waiting(self) -> int:
@@ -143,19 +161,18 @@ class DownloadMonitor:
         on_outcome: Callable[[Outcome], None] = lambda _o: None,
         *,
         poll_seconds: float = 0.5,
+        rewatch_seconds: float = 5.0,
     ) -> None:
         """Vigila hasta que se active ``stop``."""
-        observer = Observer()
-        for directory in self.dirs:
-            if directory.is_dir():
-                observer.schedule(_Handler(self), str(directory), recursive=False)
-            else:
-                log.warning("La carpeta vigilada no existe: %s", directory)
-        observer.start()
+        watches = _Watches(self, PollingObserver(timeout=NETWORK_POLL_SECONDS))
         try:
-            next_reconcile = 0.0
+            next_reconcile = next_rewatch = 0.0
             while not stop.is_set():
                 now = time.monotonic()
+                if now >= next_rewatch:
+                    for directory in watches.sync():
+                        self._reconcile_dir(directory, now)  # recién conectada
+                    next_rewatch = now + rewatch_seconds
                 if now >= next_reconcile:
                     self.reconcile(now)
                     next_reconcile = now + self._settings.reconcile_seconds
@@ -163,7 +180,69 @@ class DownloadMonitor:
                     on_outcome(outcome)
                 stop.wait(poll_seconds)
         finally:
+            watches.close()
+
+
+class _Watches:
+    """Vigilancias activas, una por carpeta disponible."""
+
+    def __init__(self, monitor: DownloadMonitor, polling: BaseObserver) -> None:
+        self._monitor = monitor
+        self._native: BaseObserver = Observer()
+        self._polling = polling
+        self._native.start()
+        self._polling.start()
+        # carpeta → (observador, vigilancia, identidad (st_dev, st_ino) al empezar)
+        self._active: dict[Path, tuple[BaseObserver, ObservedWatch, tuple[int, int]]] = {}
+
+    def sync(self) -> list[Path]:
+        """Ajusta las vigilancias a las carpetas disponibles; devuelve las recién añadidas."""
+        added: list[Path] = []
+        for directory in self._monitor.dirs:
+            try:
+                st = directory.stat()
+                identity: tuple[int, int] | None = (st.st_dev, st.st_ino)
+            except OSError:
+                identity = None
+            current = self._active.get(directory)
+            if current is not None and current[2] == identity:
+                continue
+            if current is not None:
+                self._drop(directory)
+                log.info("Carpeta vigilada no disponible (¿disco desconectado?): %s", directory)
+            if identity is not None and self._add(directory, identity):
+                added.append(directory)
+        return added
+
+    def _add(self, directory: Path, identity: tuple[int, int]) -> bool:
+        mount = filesystem_of(directory)
+        network = mount is not None and mount.is_network
+        observer = self._polling if network else self._native
+        try:
+            watch = observer.schedule(_Handler(self._monitor), str(directory), recursive=False)
+        except OSError as exc:
+            if network:
+                log.warning("No se puede vigilar %s: %s", directory, exc)
+                return False
+            # Sin inotify (límite de vigilancias, FUSE sin soporte): sondeo.
+            log.info("inotify no disponible en %s (%s): se sondea", directory, exc)
+            observer = self._polling
+            watch = observer.schedule(_Handler(self._monitor), str(directory), recursive=False)
+        self._active[directory] = (observer, watch, identity)
+        fstype = mount.fstype if mount else "?"
+        log.info("Vigilando %s (%s, %s)", directory, fstype, "sondeo" if network else "inotify")
+        return True
+
+    def _drop(self, directory: Path) -> None:
+        observer, watch, _ = self._active.pop(directory)
+        # El emisor puede haberse detenido ya al desmontarse el disco.
+        with contextlib.suppress(KeyError, OSError):
+            observer.unschedule(watch)
+
+    def close(self) -> None:
+        for observer in (self._native, self._polling):
             observer.stop()
+        for observer in (self._native, self._polling):
             observer.join()
 
 

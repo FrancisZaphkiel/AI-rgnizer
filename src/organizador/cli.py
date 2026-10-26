@@ -18,7 +18,7 @@ from sqlalchemy import func, select
 
 from organizador import __version__
 from organizador.actions import ActionError, ActionService
-from organizador.core.config import Settings, load_settings
+from organizador.core.config import Settings, load_settings, set_config_value
 from organizador.core.paths import AppPaths
 from organizador.downloads import (
     DownloadMonitor,
@@ -26,7 +26,7 @@ from organizador.downloads import (
     SuggestionNotFoundError,
     SuggestionQueue,
 )
-from organizador.downloads.queue import alternatives_of
+from organizador.downloads.queue import alternatives_of, available
 from organizador.duplicates import (
     DuplicateFinder,
     DuplicateGroup,
@@ -47,6 +47,7 @@ from organizador.learning.patterns import FolderPattern, dominant_pattern, rende
 from organizador.learning.review import Misplaced, find_misplaced, is_in
 from organizador.learning.store import IncompatibleModelError, ModelNotFoundError, ModelStore
 from organizador.scanner import Scanner, ScanStats
+from organizador.scanner.mounts import filesystem_of
 from organizador.storage import Database
 from organizador.storage.index import under_roots
 from organizador.storage.models import (
@@ -780,7 +781,7 @@ def _print_suggestion(row: DownloadSuggestion) -> None:
     if row.state == SuggestionState.AUTO:
         print(f"[{row.id}] {row.path}\n      movido a {row.chosen} ({row.confidence:.0%})")
         return
-    print(f"[{row.id}] {row.path}")
+    print(f"[{row.id}] {row.path}" + ("" if available(row) else "  (disco no conectado)"))
     if row.destination is None:
         print("      sin clasificar: elige carpeta con «organizador accept ID --to CARPETA»")
     else:
@@ -821,6 +822,36 @@ def _cmd_watch(ctx: AppContext, args: argparse.Namespace) -> int:
     mode = "automático" if settings.mode == "auto" else "solo sugerencias"
     print(f"Vigilando {', '.join(map(str, monitor.dirs))} ({mode}). Ctrl+C para salir.")
     monitor.run(stop, show)
+    return 0
+
+
+def _cmd_watched(ctx: AppContext, args: argparse.Namespace) -> int:
+    dirs = [d.expanduser() for d in ctx.settings.watched_dirs]
+    if args.action in {"add", "remove"}:
+        target = args.dir.expanduser().absolute()
+        if args.action == "add":
+            if target in dirs:
+                print(f"{target} ya está en la lista")
+                return 0
+            if not target.is_dir():
+                print(f"aviso: {target} no está disponible ahora; se vigilará al conectarse")
+            dirs.append(target)
+        elif target in dirs:
+            dirs.remove(target)
+        else:
+            print(f"error: {target} no está en la lista", file=sys.stderr)
+            return 2
+        set_config_value(ctx.paths, "watched_dirs", [str(d) for d in dirs])
+    if not dirs:
+        print("No se vigila ninguna carpeta («organizador watched add CARPETA»).")
+    for directory in dirs:
+        if not directory.is_dir():
+            print(f"  {directory}  — no disponible (¿disco desconectado?)")
+            continue
+        mount = filesystem_of(directory)
+        fstype = mount.fstype if mount else "?"
+        method = "sondeo cada 5 s" if mount and mount.is_network else "inotify"
+        print(f"  {directory}  — {fstype}, {method}")
     return 0
 
 
@@ -889,6 +920,12 @@ def _add_watch_commands(add: Callable[[str, Command, str], argparse.ArgumentPars
     p.add_argument(
         "--auto", action="store_true", help="mueve si la confianza llega a watch.auto_threshold"
     )
+
+    p = add("watched", _cmd_watched, "carpetas donde llegan descargas (lista, añade, quita)")
+    watched_sub = p.add_subparsers(dest="action")
+    watched_sub.add_parser("list", help="muestra las carpetas y su sistema de archivos")
+    for action, text in (("add", "añade una carpeta"), ("remove", "quita una carpeta")):
+        watched_sub.add_parser(action, help=text).add_argument("dir", type=Path)
 
     add("pending", _cmd_pending, "sugerencias pendientes de las carpetas vigiladas")
 

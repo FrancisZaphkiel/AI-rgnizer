@@ -10,6 +10,7 @@ import pytest
 from organizador.actions import ActionService
 from organizador.core.config import WatchSettings
 from organizador.downloads import DownloadMonitor, Outcome, SuggestionQueue
+from organizador.downloads.completion import Arrival
 from organizador.features import FileFeatures
 from organizador.learning.model import Prediction, Source, Suggestion
 from organizador.storage import Database
@@ -196,3 +197,76 @@ def test_watchdog_events_produce_suggestion(db: Database, downloads: Path) -> No
         stop.set()
         thread.join(timeout=5)
     assert [Path(o.suggestion.path).name for o in seen] == ["nuevo.txt"]
+
+
+def test_remounted_disk_with_new_inodes_does_not_duplicate(db: Database, downloads: Path) -> None:
+    path = downloads / "a.txt"
+    path.write_text("x")
+    queue = SuggestionQueue(db)
+    arrival = Arrival.of(path)
+    assert arrival is not None
+    assert queue.add(arrival, fixed(None, 0)) is not None
+    # FAT/exFAT: al volver a montar, el mismo archivo tiene otro inodo.
+    remounted = Arrival(path, arrival.size, arrival.mtime_ns, arrival.inode + 1, arrival.device)
+    assert queue.add(remounted, fixed(None, 0)) is None
+
+
+def test_disconnected_disk_keeps_pending_suggestions(db: Database, workdir: Path) -> None:
+    disk = workdir / "disco"
+    disk.mkdir()
+    (disk / "a.txt").write_text("x")
+    cycle(monitor_for(db, disk, by_extension({})))
+    disk.rename(workdir / "desmontado")  # la carpeta desaparece al desmontar
+    SuggestionQueue(db).expire_missing()
+    assert len(SuggestionQueue(db).pending()) == 1
+
+
+def run_monitor(
+    monitor: DownloadMonitor,
+) -> tuple[list[Outcome], threading.Event, threading.Thread]:
+    seen: list[Outcome] = []
+    stop = threading.Event()
+    thread = threading.Thread(
+        target=monitor.run,
+        args=(stop, seen.append),
+        kwargs={"poll_seconds": 0.05, "rewatch_seconds": 0.1},
+    )
+    thread.start()
+    return seen, stop, thread
+
+
+def wait_for(condition: Callable[[], bool], timeout: float = 5) -> bool:
+    deadline = time.monotonic() + timeout
+    while not condition() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    return condition()
+
+
+def test_disk_plugged_unplugged_and_plugged_again(db: Database, workdir: Path) -> None:
+    disk = workdir / "disco" / "Descargas"
+    monitor = DownloadMonitor(
+        [workdir / "Descargas", disk],
+        WatchSettings(stable_seconds=0.2, reconcile_seconds=3600),
+        SuggestionQueue(db),
+        by_extension({}),
+    )
+    seen, stop, thread = run_monitor(monitor)
+    try:
+        time.sleep(0.3)  # sin disco: no falla
+        disk.mkdir(parents=True)  # se conecta: había un archivo de antes
+        (disk / "antiguo.txt").write_text("x")
+        assert wait_for(lambda: len(seen) == 1)
+        (disk / "nuevo.txt").write_text("y")  # y lo que llega después se ve por eventos
+        assert wait_for(lambda: len(seen) == 2)
+
+        disk.parent.rename(workdir / "fuera")  # se desconecta
+        time.sleep(0.4)
+        (workdir / "fuera").rename(workdir / "disco")  # vuelve: misma carpeta, otro inodo
+        disk.rename(workdir / "disco" / "viejo")
+        disk.mkdir()
+        (disk / "otra.txt").write_text("z")
+        assert wait_for(lambda: len(seen) == 3)
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+    assert [Path(o.suggestion.path).name for o in seen] == ["antiguo.txt", "nuevo.txt", "otra.txt"]

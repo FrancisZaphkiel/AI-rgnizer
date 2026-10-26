@@ -236,7 +236,7 @@ class SuggestionState(enum.StrEnum):
 class DownloadSuggestion(Base):
     """Archivo llegado a una carpeta vigilada con su destino propuesto (Fase 4).
 
-    La huella (ruta, tamaño, mtime, inodo) identifica la llegada: reiniciar el servicio
+    La huella (ruta, tamaño, mtime) identifica la llegada: reiniciar el servicio
     vuelve a ver el mismo archivo y no crea otra sugerencia.
     """
 

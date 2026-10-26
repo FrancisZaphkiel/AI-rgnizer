@@ -69,11 +69,24 @@ uv run organizador watch --once       # revisa una vez y termina
 uv run organizador pending            # sugerencias pendientes con su id
 uv run organizador accept ID [--to CARPETA]   # mueve (se puede deshacer) y aprende
 uv run organizador ignore ID...       # el archivo se queda donde está
+uv run organizador watched            # carpetas vigiladas, su sistema de archivos y si están conectadas
+uv run organizador watched add /run/media/$USER/Disco/Descargas
+uv run organizador watched remove CARPETA
 ```
 
+Se pueden vigilar varias carpetas a la vez, también en discos externos con cualquier sistema
+de archivos (ext4, Btrfs, NTFS, exFAT, FAT…). Un disco desconectado no da error: se empieza
+a vigilar al conectarlo, se relee entero y sus sugerencias pendientes se conservan. En
+sistemas de red (NFS, SMB, sshfs) se sondea cada 5 s, porque inotify no ve los cambios
+hechos desde otro equipo. Mover entre discos copia, verifica con hash y solo después borra
+el original, y funciona en sistemas sin permisos POSIX ni enlaces duros.
+
 Solo se consideran los archivos directamente dentro de la carpeta vigilada, y solo cuando la
-descarga terminó: se ignoran `.part`, `.crdownload` y el marcador vacío de Firefox, y el
-tamaño debe mantenerse estable unos segundos. Cada archivo recibe una sola sugerencia
+descarga terminó, con cualquier navegador o gestor de descargas: se ignoran los temporales
+(`.part` y el marcador vacío de Firefox y derivados; `.crdownload` de Chrome, Chromium,
+Brave, Edge, Vivaldi y Opera; `.wkdownload`, `.opdownload`, `.kget`, `.!qB`, `.aria2`…), el
+tamaño debe mantenerse estable unos segundos y ningún programa debe tenerlo abierto para
+escritura (así se cubren wget, curl o cualquiera que escriba directamente en el nombre final). Cada archivo recibe una sola sugerencia
 aunque se reinicie la vigilancia. En modo automático (`--auto` o `mode = "auto"`) se mueve
 sin preguntar solo lo que decide una regla tuya, una regla aprendida o el modelo con
 probabilidad calibrada ≥ `auto_threshold`; el resto queda pendiente.

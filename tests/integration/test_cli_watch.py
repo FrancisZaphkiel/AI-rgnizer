@@ -93,3 +93,22 @@ def test_watch_auto_moves_by_user_rule(isolated_home: Path, downloads: Path) -> 
 def test_accept_unknown_id(downloads: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["accept", "99"]) == 2
     assert "No hay ninguna sugerencia 99" in capsys.readouterr().err
+
+
+def test_watched_add_list_remove(
+    isolated_home: Path, downloads: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    disk = isolated_home / "media/USB/bajadas"
+    assert main(["watched", "add", str(disk)]) == 0
+    assert "no está disponible" in capsys.readouterr().out
+    disk.mkdir(parents=True)
+    assert main(["watched"]) == 0
+    out = capsys.readouterr().out
+    assert str(downloads) in out and str(disk) in out and "inotify" in out
+
+    assert main(["watched", "remove", str(disk)]) == 0
+    assert str(disk) not in capsys.readouterr().out
+    assert main(["watched", "remove", str(disk)]) == 2
+    # El resto de config.toml se conserva.
+    config = (isolated_home / ".config/organizador/config.toml").read_text()
+    assert "stable_seconds" in config and "ext:pdf" in config

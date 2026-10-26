@@ -31,7 +31,6 @@ class SuggestionQueue:
                     DownloadSuggestion.path == str(arrival.path),
                     DownloadSuggestion.size == arrival.size,
                     DownloadSuggestion.mtime_ns == arrival.mtime_ns,
-                    DownloadSuggestion.inode == arrival.inode,
                 )
             )
             if exists is not None:
@@ -94,7 +93,11 @@ class SuggestionQueue:
         return row
 
     def expire_missing(self) -> int:
-        """Marca ``gone`` las pendientes cuyo archivo ya no está o cambió."""
+        """Marca ``gone`` las pendientes cuyo archivo ya no está o cambió.
+
+        Si falta la carpeta entera (disco externo desconectado) la sugerencia se conserva:
+        el archivo volverá a estar al conectar el disco.
+        """
         expired = 0
         with self._db.session() as s:
             for row in s.scalars(
@@ -102,15 +105,19 @@ class SuggestionQueue:
                     DownloadSuggestion.state == SuggestionState.PENDING
                 )
             ):
-                current = Arrival.of(Path(row.path))
-                if current is None or (current.size, current.mtime_ns, current.inode) != (
-                    row.size,
-                    row.mtime_ns,
-                    row.inode,
-                ):
+                path = Path(row.path)
+                if not path.parent.is_dir():
+                    continue
+                current = Arrival.of(path)
+                if current is None or (current.size, current.mtime_ns) != (row.size, row.mtime_ns):
                     row.state = SuggestionState.GONE
                     expired += 1
         return expired
+
+
+def available(row: DownloadSuggestion) -> bool:
+    """La carpeta del archivo está accesible (su disco está conectado)."""
+    return Path(row.path).parent.is_dir()
 
 
 def alternatives_of(row: DownloadSuggestion) -> list[tuple[str, float]]:

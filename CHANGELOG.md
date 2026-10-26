@@ -16,6 +16,13 @@ publicará al cerrar la Fase 4 (vigilancia de Descargas), según el plan.
   estable. Cola de sugerencias en la base de datos (tabla `suggestions`, migración 0005)
   sin duplicados al reiniciar. Modo automático que solo mueve con reglas o probabilidad
   calibrada ≥ `watch.auto_threshold`; aceptar una sugerencia mueve y aprende.
+- **Cualquier navegador o gestor de descargas**: temporales de la familia Firefox,
+  Chromium, WebKitGTK, Opera, KGet, qBittorrent, µTorrent y aria2, y comprobación general
+  de que ningún proceso tiene el archivo abierto para escritura (`/proc`).
+- **Varias carpetas de descargas** (`watched list|add|remove`), también en discos externos:
+  se vigilan al conectarse y se dejan al desconectarse, sin perder sugerencias; sondeo en
+  sistemas de archivos de red.
+
 - **Características por archivo** (caché en el índice): palabras, fechas, versión y marcas
   de copia del nombre; extensión, MIME (libmagic), tamaño, EXIF, metadatos PDF y de audio,
   y dominio de origen (`user.xdg.origin.url`).
@@ -35,6 +42,11 @@ publicará al cerrar la Fase 4 (vigilancia de Descargas), según el plan.
 - **Patrones de nombres** (`patterns`): plantillas por carpeta
   (`2024-05-10_informe_v2.pdf` → `{fecha:AAAA-MM-DD}_{texto}_v{n}`) y, en `suggest`, el
   nombre que tendría el archivo según el patrón de su destino.
+
+### Corregido
+
+- Mover a o desde exFAT, FAT y FUSE: ya no falla por `chmod` ni por falta de enlaces duros.
+- Deshacer un movimiento hacia exFAT o FAT ya no lo rechaza por el redondeo del mtime.
 
 ### Seguridad
 

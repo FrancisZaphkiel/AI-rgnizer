@@ -72,15 +72,38 @@ def fsync_dir(directory: Path) -> None:
     fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
     try:
         os.fsync(fd)
+    except OSError as exc:
+        # Algunos FUSE y sistemas de red no admiten fsync de un directorio.
+        if exc.errno not in (errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS):
+            raise
     finally:
         os.close(fd)
+
+
+# link() no existe en FAT, exFAT ni en muchos FUSE (ntfs-3g, exfat-fuse).
+_NO_HARDLINKS = frozenset({errno.EPERM, errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS})
 
 
 def _link_then_unlink(src: Path, dst: Path) -> None:
     # Alternativa atómica sin sobrescritura para sistemas sin RENAME_NOREPLACE:
     # link() falla con EEXIST si el destino existe.
-    os.link(src, dst, follow_symlinks=False)
+    try:
+        os.link(src, dst, follow_symlinks=False)
+    except OSError as exc:
+        if exc.errno not in _NO_HARDLINKS:
+            raise
+        _check_then_rename(src, dst)
+        return
     os.unlink(src)
+
+
+def _check_then_rename(src: Path, dst: Path) -> None:
+    # Último recurso en sistemas sin RENAME_NOREPLACE ni enlaces duros: comprobar y
+    # renombrar no es atómico, pero el bloqueo de ActionService impide que la propia
+    # aplicación cree ``dst`` entre medias.
+    if os.path.lexists(dst):
+        raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), str(dst))
+    src.rename(dst)
 
 
 def move_no_replace(src: Path, dst: Path) -> None:
@@ -125,7 +148,12 @@ def _copy_exclusive(src: Path, temp: Path) -> None:
         shutil.copyfileobj(fin, fout, _CHUNK)
         fout.flush()
         os.fsync(fout.fileno())
-    shutil.copystat(src, temp)
+    try:
+        shutil.copystat(src, temp)
+    except OSError:
+        # FAT/exFAT/NTFS sin permisos POSIX rechazan chmod o xattrs: basta con las fechas.
+        st = src.stat()
+        os.utime(temp, ns=(st.st_atime_ns, st.st_mtime_ns))
 
 
 def copy_verify_unlink(src: Path, dst: Path, temp: Path, expected_hash: str) -> None:

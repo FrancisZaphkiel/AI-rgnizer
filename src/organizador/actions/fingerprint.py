@@ -8,6 +8,10 @@ from pathlib import Path
 
 from organizador.actions.fsops import hash_file
 
+# FAT guarda el mtime con 2 s de resolución y exFAT con 10 ms: al mover a un disco
+# externo el mtime copiado se redondea.
+MTIME_TOLERANCE_NS = 2_000_000_000
+
 
 @dataclass(frozen=True, slots=True)
 class Fingerprint:
@@ -35,7 +39,8 @@ class Fingerprint:
     def matches(self, path: Path) -> bool:
         """¿Es ``path`` el mismo contenido? No compara inode: cambia al cruzar dispositivos.
 
-        ``mtime`` se compara porque se conserva al mover (rename o ``copystat``).
+        ``mtime`` se compara porque se conserva al mover (rename o ``copystat``), con la
+        tolerancia de ``MTIME_TOLERANCE_NS`` para sistemas de archivos de baja resolución.
         """
         try:
             st = path.lstat()
@@ -43,6 +48,6 @@ class Fingerprint:
             return False
         if not stat.S_ISREG(st.st_mode) or st.st_size != self.size:
             return False
-        if st.st_mtime_ns != self.mtime_ns:
+        if abs(st.st_mtime_ns - self.mtime_ns) > MTIME_TOLERANCE_NS:
             return False
         return self.content_hash is None or hash_file(path) == self.content_hash
