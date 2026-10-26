@@ -193,6 +193,8 @@ class Feedback(Base):
     chosen: Mapped[str | None] = mapped_column(Text)
     accepted: Mapped[bool]
     confidence: Mapped[float | None] = mapped_column(Float)
+    # Características del archivo al dar la respuesta (el archivo puede moverse después).
+    features: Mapped[str | None] = mapped_column(Text)
     action_id: Mapped[str | None] = mapped_column(ForeignKey("actions_journal.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

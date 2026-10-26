@@ -46,16 +46,24 @@ def indexed_features(
     roots: Sequence[Path],
     *,
     with_metadata: bool = True,
+    skip_dirs: Sequence[Path] = (),
     stats: FeatureStats | None = None,
     cancel: threading.Event | None = None,
     progress: ProgressCallback | None = None,
 ) -> Iterator[IndexedFeatures]:
     """Características de los archivos indexados bajo ``roots``; calcula las que faltan.
 
-    Los archivos que cambiaron desde el último escaneo o que no se pueden leer se omiten.
+    Los archivos que cambiaron desde el último escaneo o que no se pueden leer se omiten,
+    igual que los que están dentro de ``skip_dirs`` (sin llegar a abrirlos).
     """
     stats = stats if stats is not None else FeatureStats()
     resolved = [r.expanduser().resolve() for r in roots]
+    skipped = frozenset(skip_dirs)
+
+    def is_skipped(directory: Path) -> bool:
+        # Recorre los ancestros (pocos) en lugar de comparar con cada carpeta excluida.
+        return any(d in skipped for d in (directory, *directory.parents))
+
     with db.new_session() as session:
         rows = session.execute(
             select(
@@ -78,8 +86,10 @@ def indexed_features(
         for fid, dir_path, name, size, mtime, ctime, ino, dev, raw, version in rows:
             if cancel is not None and cancel.is_set():
                 break
-            stats.files += 1
             path = Path(dir_path) / name
+            if skipped and is_skipped(path.parent):
+                continue
+            stats.files += 1
             if raw is not None and version == FEATURES_VERSION:
                 yield IndexedFeatures(fid, path, FileFeatures.from_json(raw))
                 continue

@@ -8,6 +8,7 @@ función que borra comprueba antes que lo que elimina es exactamente lo esperado
 - ``complete_interrupted_copy``: idem, para recuperar una copia interrumpida.
 - ``discard_temp``: borra únicamente temporales creados por esta aplicación.
 - ``remove_trashinfo``: borra únicamente archivos ``.trashinfo`` de una papelera.
+- ``discard_model_version``: borra únicamente versiones antiguas del modelo de la aplicación.
 
 Ninguna función sobrescribe jamás un archivo existente.
 """
@@ -18,6 +19,7 @@ import ctypes
 import ctypes.util
 import errno
 import os
+import re
 import shutil
 from collections.abc import Callable
 from pathlib import Path
@@ -172,5 +174,21 @@ def remove_trashinfo(info_path: Path) -> None:
         raise ValueError(f"No es un archivo .trashinfo de una papelera: {info_path}")
     try:
         os.unlink(info_path)
+    except FileNotFoundError:
+        return
+
+
+MODEL_FILE = re.compile(r"model-\d{4,}\.joblib")
+
+
+def discard_model_version(path: Path, models_dir: Path) -> None:
+    """Borra una versión antigua del modelo; rechaza cualquier ruta fuera de ``models_dir``.
+
+    Los modelos son datos de la aplicación (se regeneran entrenando), nunca del usuario.
+    """
+    if path.parent != models_dir or not MODEL_FILE.fullmatch(path.name):
+        raise ValueError(f"No es una versión del modelo de la aplicación: {path}")
+    try:
+        os.unlink(path)
     except FileNotFoundError:
         return
