@@ -4,7 +4,7 @@ Organizador inteligente de archivos para Linux (probado en CachyOS). Aprende có
 tus carpetas, sugiere destinos para lo que llega a Descargas y detecta duplicados. Todo es local
 y reversible: nada se borra, solo se envía a la papelera.
 
-Estado: en desarrollo (Fase 2: duplicados). Ver [`PLAN.md`](PLAN.md).
+Estado: `v0.1.0` (Fases 0–2: núcleo, acciones seguras y duplicados, por CLI). Ver [`PLAN.md`](PLAN.md).
 
 ## Instalación para desarrollo (CachyOS / Arch)
 

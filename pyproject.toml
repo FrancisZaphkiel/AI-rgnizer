@@ -1,6 +1,6 @@
 [project]
 name = "organizador"
-version = "0.0.1"
+version = "0.1.0"
 description = "Organizador inteligente de archivos para Linux: aprende tus costumbres, sugiere destinos y detecta duplicados."
 readme = "README.md"
 license = "MIT"
