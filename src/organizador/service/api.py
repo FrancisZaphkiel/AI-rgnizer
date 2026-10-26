@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Annotated, Any
 
 from dbus_fast import Variant
-from dbus_fast.annotations import DBusInt64, DBusSignature, DBusStr, DBusUInt32
+from dbus_fast.annotations import DBusBool, DBusInt64, DBusSignature, DBusStr, DBusUInt32
 from dbus_fast.constants import PropertyAccess
 from dbus_fast.errors import DBusError
 from dbus_fast.service import ServiceInterface, dbus_property, method, signal
@@ -45,6 +45,10 @@ class OrganizadorInterface(ServiceInterface):
         return self._daemon.mode
 
     @dbus_property(access=PropertyAccess.READ)
+    def DatabasePath(self) -> DBusStr:
+        return str(self._daemon.database_path)
+
+    @dbus_property(access=PropertyAccess.READ)
     def WatchedDirs(self) -> DBusStrList:
         return [str(d) for d in self._daemon.watched_dirs]
 
@@ -65,6 +69,22 @@ class OrganizadorInterface(ServiceInterface):
     @method()
     async def Undo(self, action_id: DBusStr) -> DBusStr:
         return await self._daemon.undo(action_id)
+
+    @method()
+    async def Move(self, source: DBusStr, folder: DBusStr, learn: DBusBool) -> DBusDict:
+        return await self._daemon.move(source, folder, learn)
+
+    @method()
+    async def Rename(self, source: DBusStr, new_name: DBusStr) -> DBusDict:
+        return await self._daemon.rename(source, new_name)
+
+    @method()
+    async def Trash(self, source: DBusStr, expected_hash: DBusStr) -> DBusDict:
+        return await self._daemon.trash(source, expected_hash)
+
+    @method()
+    async def Teach(self, path: DBusStr, folder: DBusStr) -> DBusStr:
+        return await self._daemon.teach(path, folder)
 
     @method()
     async def History(self, limit: DBusUInt32) -> DBusDictList:

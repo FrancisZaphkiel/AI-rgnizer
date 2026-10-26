@@ -5,6 +5,15 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def no_session_bus(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ningún test habla con el bus de la sesión real (ni con el servicio instalado).
+
+    Las pruebas del servicio arrancan su propio bus privado.
+    """
+    monkeypatch.delenv("DBUS_SESSION_BUS_ADDRESS", raising=False)
+
+
 @pytest.fixture
 def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """``HOME`` temporal sin variables XDG heredadas del usuario real."""

@@ -5,6 +5,14 @@ según [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+### Añadido
+
+- **La CLI delega en el servicio** cuando está en marcha sobre la misma base de datos
+  (único escritor): `mv`, `rename`, `trash`, `undo`, `accept`, `ignore`, `teach`,
+  `review --move` y las papeleras de `dupes`/`similar`. Opción global `--local`.
+- API D-Bus v1 (añadidos compatibles): `Move`, `Rename`, `Trash`, `Teach` y la propiedad
+  `DatabasePath`.
+
 ## [0.2.0] — 2026-10-26
 
 Fases 3 y 4: aprendizaje de costumbres y vigilancia de Descargas como servicio de usuario

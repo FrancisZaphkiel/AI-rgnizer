@@ -120,7 +120,12 @@ busctl --user call io.github.organizador.Organizador /io/github/organizador/Orga
 ```
 
 Todas las escrituras del servicio pasan por un único hilo, y solo puede haber un servicio
-por usuario.
+por usuario. Mientras está en marcha es el **único escritor**: los comandos que modifican
+archivos (`mv`, `rename`, `trash`, `undo`, `accept`, `ignore`, `teach`, `review --move`,
+`dupes --trash`, `similar --trash`) se lo piden por D-Bus, y `watch` se niega a arrancar.
+Solo se delega en un servicio que use la misma base de datos; `--local` lo evita.
+`scan` y `train` siguen siendo locales: escriben el índice y el modelo, nunca tus archivos,
+y el servicio recarga el modelo al detectar una versión nueva.
 
 Nada sale del equipo (hay un test que bloquea los sockets de red) y el modelo solo sugiere:
 mover o renombrar siempre pasa por las acciones seguras y se puede deshacer.

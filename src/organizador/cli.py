@@ -18,18 +18,17 @@ from typing import Any, Protocol, Self
 from sqlalchemy import select
 
 from organizador import __version__
-from organizador.actions import ActionError, ActionService, fsops
+from organizador.actions import ActionError, fsops
+from organizador.actions.errors import InvalidTargetError
 from organizador.app import (
     AppContext,
     SuggestionError,
-    accept_suggestion,
     classifier,
     folder_names,
-    ignore_suggestion,
     learning_exclude,
     record_choice,
-    undo_action,
 )
+from organizador.backend import Backend, open_backend
 from organizador.core.config import set_config_value
 from organizador.core.paths import AppPaths
 from organizador.downloads import (
@@ -47,6 +46,7 @@ from organizador.duplicates import (
     trash_redundant,
     trash_similar,
 )
+from organizador.duplicates.cleanup import Trasher
 from organizador.duplicates.names import NameGroup, SimilarNameFinder
 from organizador.features import FileFeatures, extract_features
 from organizador.learning.dataset import Dataset, build_dataset, find_project_dirs
@@ -59,6 +59,7 @@ from organizador.learning.store import IncompatibleModelError, ModelNotFoundErro
 from organizador.scanner import Scanner, ScanStats
 from organizador.scanner.mounts import filesystem_of
 from organizador.service import systemd
+from organizador.service.client import RemoteBackend
 from organizador.service.daemon import AlreadyRunningError, Daemon
 from organizador.storage.index import under_roots
 from organizador.storage.models import (
@@ -82,6 +83,19 @@ def _load_model(ctx: AppContext) -> DestinationModel | None:
 
 def _record_choice(ctx: AppContext, path: Path, folder: Path, features: FileFeatures) -> None:
     print("  " + record_choice(ctx, path, folder, features, _load_model))
+
+
+def _backend(ctx: AppContext, args: argparse.Namespace) -> Backend:
+    """El servicio si está en marcha (único escritor); con ``--local``, siempre en local."""
+    cached = _BACKENDS.get(id(ctx))
+    if cached is None:
+        cached = _BACKENDS[id(ctx)] = open_backend(
+            ctx, _load_model, use_service=not getattr(args, "local", False)
+        )
+    return cached
+
+
+_BACKENDS: dict[int, Backend] = {}
 
 
 def _cmd_paths(_ctx: AppContext, _args: argparse.Namespace) -> int:
@@ -184,9 +198,7 @@ def _ask_group[G: _Group](group: G, question: str) -> G | None:
         print("  Respuesta no válida.")
 
 
-def _trash_groups(
-    service: ActionService, groups: Sequence[DuplicateGroup], *, assume_yes: bool
-) -> int:
+def _trash_groups(service: Trasher, groups: Sequence[DuplicateGroup], *, assume_yes: bool) -> int:
     failures = trashed = 0
     for index, proposed in enumerate(groups, start=1):
         group: DuplicateGroup | None = proposed
@@ -245,7 +257,7 @@ def _cmd_dupes(ctx: AppContext, args: argparse.Namespace) -> int:
     if not args.trash:
         return 0
 
-    return _trash_groups(ctx.actions(), report.groups, assume_yes=args.yes)
+    return _trash_groups(_backend(ctx, args), report.groups, assume_yes=args.yes)
 
 
 def _print_similar(index: int, group: SimilarGroup) -> None:
@@ -263,7 +275,7 @@ def _print_similar(index: int, group: SimilarGroup) -> None:
         print(f"  [{n}] {label:<9} {f.path}  ({detail})")
 
 
-def _trash_similar_groups(service: ActionService, groups: Sequence[SimilarGroup]) -> int:
+def _trash_similar_groups(service: Trasher, groups: Sequence[SimilarGroup]) -> int:
     # Sin --yes a propósito: cada grupo de similares exige una confirmación explícita.
     failures = trashed = 0
     for index, proposed in enumerate(groups, start=1):
@@ -319,7 +331,7 @@ def _cmd_similar(ctx: AppContext, args: argparse.Namespace) -> int:
     if not args.trash:
         return 0
 
-    return _trash_similar_groups(ctx.actions(), report.groups)
+    return _trash_similar_groups(_backend(ctx, args), report.groups)
 
 
 def _print_names(index: int, group: NameGroup) -> None:
@@ -353,35 +365,34 @@ def _cmd_names(ctx: AppContext, args: argparse.Namespace) -> int:
 
 def _cmd_mv(ctx: AppContext, args: argparse.Namespace) -> int:
     dest_dir: Path = args.dest_dir.expanduser()
-    if args.parents:
-        dest_dir.mkdir(parents=True, exist_ok=True)
-    # Características antes de mover: describen el archivo tal como llegó.
-    features = extract_features(args.source) if args.learn and args.source.is_file() else None
-    result = ctx.actions().move(args.source, dest_dir)
+    if not args.parents and not dest_dir.is_dir():
+        raise InvalidTargetError(
+            f"El destino no es un directorio: {dest_dir} (usa -p para crearlo)"
+        )
+    result, learned = _backend(ctx, args).move(args.source, dest_dir, learn=args.learn)
     print(f"{result.action_id[:8]}  {result.source} → {result.destination}")
-    if features is not None:
-        _record_choice(ctx, result.destination, result.destination.parent.resolve(), features)
+    if learned:
+        print(f"  {learned}")
     return 0
 
 
 def _cmd_rename(ctx: AppContext, args: argparse.Namespace) -> int:
-    result = ctx.actions().rename(args.source, args.new_name)
+    result = _backend(ctx, args).rename(args.source, args.new_name)
     print(f"{result.action_id[:8]}  {result.source} → {result.destination}")
     return 0
 
 
 def _cmd_trash(ctx: AppContext, args: argparse.Namespace) -> int:
-    service = ctx.actions()
+    backend = _backend(ctx, args)
     for source in args.sources:
-        result = service.trash(source)
+        result = backend.trash(source)
         print(f"{result.action_id[:8]}  {result.source} → papelera")
     return 0
 
 
 def _cmd_undo(ctx: AppContext, args: argparse.Namespace) -> int:
-    undo_id = undo_action(ctx, args.action_id)
-    [entry] = [e for e in ctx.actions().history(5) if e.id == undo_id]
-    print(f"{undo_id[:8]}  restaurado {entry.destination}")
+    result = _backend(ctx, args).undo(args.action_id)
+    print(f"{result.action_id[:8]}  restaurado {result.destination}")
     return 0
 
 
@@ -395,7 +406,10 @@ def _cmd_history(ctx: AppContext, args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_recover(ctx: AppContext, _args: argparse.Namespace) -> int:
+def _cmd_recover(ctx: AppContext, args: argparse.Namespace) -> int:
+    if _backend(ctx, args).remote:
+        print("El servicio está en marcha: recupera las acciones interrumpidas al arrancar.")
+        return 0
     ctx.actions()  # la recuperación se ejecuta al crear el servicio
     return 0
 
@@ -511,12 +525,11 @@ def _cmd_suggest(ctx: AppContext, args: argparse.Namespace) -> int:
 
 
 def _cmd_teach(ctx: AppContext, args: argparse.Namespace) -> int:
-    path: Path = args.file.expanduser().resolve()
-    folder: Path = args.folder.expanduser().resolve()
-    if not path.is_file() or not folder.is_dir():
-        print("error: indica un archivo existente y una carpeta existente", file=sys.stderr)
+    try:
+        print("  " + _backend(ctx, args).teach(args.file, args.folder))
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
         return 2
-    _record_choice(ctx, path, folder, extract_features(path))
     return 0
 
 
@@ -552,20 +565,19 @@ def _cmd_review(ctx: AppContext, args: argparse.Namespace) -> int:
     report = find_misplaced(dataset, ctx.settings.learning, folders, progress=progress)
     found = report.misplaced
     print("", file=sys.stderr)
-    service = ctx.actions() if args.move else None
+    backend = _backend(ctx, args) if args.move else None
     for index, item in enumerate(found, start=1):
         print(f"\n[{index}] posible mala ubicación (ahora en {item.current})")
         _print_prediction(item.path, item.prediction)
-        if service is None:
+        if backend is None:
             continue
         target = _ask_move(item)
         if target is None:
             continue
-        Path(target).mkdir(parents=True, exist_ok=True)
-        features = extract_features(item.path)
-        result = service.move(item.path, Path(target))
+        result, learned = backend.move(item.path, Path(target))
         print(f"  {result.action_id[:8]}  {result.source} → {result.destination}")
-        _record_choice(ctx, result.destination, result.destination.parent.resolve(), features)
+        if learned:
+            print(f"  {learned}")
     print(f"\n{len(found)} archivos posiblemente mal ubicados de {report.reviewed} revisados.")
     if found and not args.move:
         print("Para moverlos uno a uno, con confirmación: organizador review --move")
@@ -706,6 +718,13 @@ def _cmd_watch(ctx: AppContext, args: argparse.Namespace) -> int:
     if args.auto:
         settings = replace(settings, mode="auto")
     dirs = [d.expanduser() for d in (args.dirs or ctx.settings.watched_dirs)]
+    if _backend(ctx, args).remote:
+        print(
+            "error: el servicio ya vigila las descargas; usa «organizador pending» o detenlo "
+            "con «systemctl --user stop organizador»",
+            file=sys.stderr,
+        )
+        return 1
     service = ctx.actions()
 
     def mover(source: Path, folder: Path) -> str:
@@ -777,7 +796,7 @@ def _cmd_pending(ctx: AppContext, _args: argparse.Namespace) -> int:
 
 def _cmd_accept(ctx: AppContext, args: argparse.Namespace) -> int:
     try:
-        accepted = accept_suggestion(ctx, args.id, args.to)
+        accepted = _backend(ctx, args).accept(args.id, args.to)
     except SuggestionError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -790,7 +809,7 @@ def _cmd_ignore(ctx: AppContext, args: argparse.Namespace) -> int:
     code = 0
     for suggestion_id in args.ids:
         try:
-            ignore_suggestion(ctx, suggestion_id)
+            _backend(ctx, args).ignore(suggestion_id)
         except SuggestionError as exc:
             print(f"error: {exc}", file=sys.stderr)
             code = 2
@@ -875,6 +894,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="organizador", description=__doc__)
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("-v", "--verbose", action="store_true", help="registro detallado")
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help="no delegar en el servicio aunque esté en marcha",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     def add(name: str, func: Command, help_text: str) -> argparse.ArgumentParser:
@@ -967,6 +991,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     finally:
+        backend = _BACKENDS.pop(id(ctx), None)
+        if isinstance(backend, RemoteBackend):
+            backend.client.close()
         ctx.db.dispose()
     return result
 

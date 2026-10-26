@@ -330,3 +330,133 @@ def test_systemd_unit_and_activation(isolated_home: Path) -> None:
     with pytest.raises(ValueError, match="servicio"):
         fsops.remove_service_file(other)
     assert other.exists()
+
+
+@pytest.fixture
+def daemon_thread(home: Path, bus_address: str) -> Iterator[str]:
+    """Servicio en marcha en otro hilo, como lo estaría bajo systemd."""
+    import threading
+
+    configure(home)
+    ready = threading.Event()
+    loop = asyncio.new_event_loop()
+    stop = asyncio.Event()
+
+    async def serve() -> None:
+        ctx = AppContext.open()
+        task = asyncio.create_task(
+            Daemon(ctx, notify=False, poll_seconds=0.05).serve(stop, bus_address=bus_address)
+        )
+        client = await MessageBus(bus_address=bus_address).connect()
+        await eventually(lambda: _has_owner(client), bool)
+        client.disconnect()
+        ready.set()
+        await task
+        ctx.db.dispose()
+
+    thread = threading.Thread(target=loop.run_until_complete, args=(serve(),))
+    thread.start()
+    assert ready.wait(10)
+    yield bus_address
+    loop.call_soon_threadsafe(stop.set)
+    thread.join(10)
+
+
+def test_cli_delegates_to_running_service(
+    home: Path,
+    daemon_thread: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from organizador.cli import main
+
+    monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS", daemon_thread)
+    doc = home / "Descargas/informe.pdf"
+    doc.write_bytes(b"%PDF")
+    assert main(["mv", str(doc), str(home / "Documentos/Trabajo"), "-p"]) == 0
+    assert (home / "Documentos/Trabajo/informe.pdf").exists()
+    capsys.readouterr()
+
+    assert main(["history"]) == 0
+    assert "informe.pdf" in capsys.readouterr().out
+    db = Database(AppPaths.from_env().database_file)
+    with db.session() as s:
+        from organizador.storage.models import ActionJournal
+
+        origins = {e.origin for e in s.query(ActionJournal)}
+    db.dispose()
+    assert origins == {"servicio"}  # lo hizo el servicio, no la CLI
+
+    assert main(["undo", "-1"]) == 1  # errores del servicio → mismo código que en local
+    assert "error:" in capsys.readouterr().err
+
+    assert main(["watch", "--once"]) == 1
+    assert "el servicio ya vigila" in capsys.readouterr().err
+
+    assert main(["--local", "trash", str(home / "Documentos/Trabajo/informe.pdf")]) == 0
+    db = Database(AppPaths.from_env().database_file)
+    with db.session() as s:
+        from organizador.storage.models import ActionJournal
+
+        origins = {e.origin for e in s.query(ActionJournal)}
+    db.dispose()
+    assert origins == {"servicio", "cli"}
+
+
+def test_cli_accept_ignore_teach_via_service(
+    home: Path,
+    daemon_thread: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from organizador.cli import main
+
+    monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS", daemon_thread)
+    (home / "Descargas/cartola.pdf").write_bytes(b"%PDF-1.4")
+    (home / "Descargas/raro.xyz").write_bytes(b"?")
+    db = Database(AppPaths.from_env().database_file)
+
+    def pending() -> dict[str, int]:
+        with db.session() as s:
+            return {
+                Path(r.path).name: r.id for r in s.query(DownloadSuggestion) if r.state == "pending"
+            }
+
+    import time
+
+    deadline = time.monotonic() + 10
+    while len(pending()) < 2 and time.monotonic() < deadline:
+        time.sleep(0.05)
+    ids = pending()
+    assert main(["accept", str(ids["cartola.pdf"])]) == 0
+    assert "aprendido por el servicio" in capsys.readouterr().out
+    assert (home / "Documentos/Banco/cartola.pdf").exists()
+    assert main(["ignore", str(ids["cartola.pdf"])]) == 2  # ya resuelta (error del servicio)
+    assert main(["accept", "999"]) == 2
+    assert main(["teach", str(home / "Descargas/raro.xyz"), str(home / "Documentos/Banco")]) == 0
+    assert "anotado" in capsys.readouterr().out
+    assert main(["teach", str(home / "no-existe"), str(home)]) == 2
+    assert main(["ignore", str(ids["raro.xyz"])]) == 0
+    db.dispose()
+
+
+def test_service_with_other_database_is_not_used(
+    home: Path, bus_address: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Un servicio de otro HOME (p. ej. una prueba) no es el escritor de nuestra base."""
+    from organizador.service.client import ServiceClient
+
+    configure(home)
+
+    async def scenario() -> None:
+        async with running_daemon(bus_address):
+            other = tmp_path / "otra.db"
+            found = await asyncio.to_thread(ServiceClient.connect, other, bus_address)
+            assert found is None
+            same = await asyncio.to_thread(
+                ServiceClient.connect, AppPaths.from_env().database_file, bus_address
+            )
+            assert same is not None
+            same.close()
+
+    asyncio.run(scenario())

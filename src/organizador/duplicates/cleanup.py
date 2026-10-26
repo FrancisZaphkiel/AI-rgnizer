@@ -16,8 +16,9 @@ import stat
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
-from organizador.actions import ActionError, ActionResult, ActionService
+from organizador.actions import ActionError, ActionResult
 from organizador.actions.errors import SourceChangedError, SourceMissingError
 from organizador.duplicates.finder import DuplicateFile, DuplicateGroup
 from organizador.duplicates.hashing import full_hash
@@ -30,6 +31,12 @@ log = logging.getLogger(__name__)
 class CleanupResult:
     trashed: list[ActionResult] = field(default_factory=list)
     failed: list[tuple[DuplicateFile | SimilarFile, ActionError]] = field(default_factory=list)
+
+
+class Trasher(Protocol):
+    """``ActionService`` o un ``Backend`` (local o del servicio)."""
+
+    def trash(self, source: Path, *, expected_hash: str | None = None) -> ActionResult: ...
 
 
 def verify_unchanged(path: Path, content_hash: str) -> None:
@@ -46,7 +53,7 @@ def verify_unchanged(path: Path, content_hash: str) -> None:
 
 
 def _trash_all(
-    items: Iterable[tuple[DuplicateFile | SimilarFile, str]], service: ActionService
+    items: Iterable[tuple[DuplicateFile | SimilarFile, str]], service: Trasher
 ) -> CleanupResult:
     result = CleanupResult()
     for item, expected in items:
@@ -58,7 +65,7 @@ def _trash_all(
     return result
 
 
-def trash_redundant(group: DuplicateGroup, service: ActionService) -> CleanupResult:
+def trash_redundant(group: DuplicateGroup, service: Trasher) -> CleanupResult:
     """Envía ``group.redundant`` a la papelera; la copia conservada y sus hardlinks no se tocan.
 
     Un fallo en una copia no detiene las demás; se informa en ``CleanupResult.failed``.
@@ -67,7 +74,7 @@ def trash_redundant(group: DuplicateGroup, service: ActionService) -> CleanupRes
     return _trash_all(((f, group.content_hash) for f in group.redundant), service)
 
 
-def trash_similar(confirmed: ConfirmedSimilarGroup, service: ActionService) -> CleanupResult:
+def trash_similar(confirmed: ConfirmedSimilarGroup, service: Trasher) -> CleanupResult:
     """Envía a la papelera las imágenes de un grupo similar **confirmado**, salvo la elegida.
 
     Cada archivo se verifica contra su propio hash: si cambió desde que se mostró, se omite.

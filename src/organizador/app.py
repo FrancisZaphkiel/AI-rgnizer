@@ -14,7 +14,7 @@ from typing import Any
 
 from sqlalchemy import func, select
 
-from organizador.actions import ActionService
+from organizador.actions import ActionResult, ActionService
 from organizador.core.config import Settings, load_settings
 from organizador.core.paths import AppPaths
 from organizador.downloads import SuggestionNotFoundError, SuggestionQueue
@@ -160,6 +160,42 @@ def classifier(
         return decide(features, loaded["model"], ctx.settings.learning, loaded["folders"])
 
     return classify
+
+
+def move_and_learn(
+    ctx: AppContext,
+    actions: ActionService,
+    source: Path,
+    folder: Path,
+    *,
+    learn: bool = True,
+    load: Callable[[AppContext], DestinationModel | None] = load_model,
+) -> tuple[ActionResult, str | None]:
+    """Mueve ``source`` a ``folder`` (creándola) y, si ``learn``, aprende la elección."""
+    folder = folder.expanduser()
+    folder.mkdir(parents=True, exist_ok=True)
+    # Características antes de mover: describen el archivo tal como llegó.
+    features = extract_features(source) if learn and source.is_file() else None
+    result = actions.move(source, folder)
+    if features is None:
+        return result, None
+    learned = record_choice(
+        ctx, result.destination, result.destination.parent.resolve(), features, load
+    )
+    return result, learned
+
+
+def teach(
+    ctx: AppContext,
+    path: Path,
+    folder: Path,
+    load: Callable[[AppContext], DestinationModel | None] = load_model,
+) -> str:
+    """«``path`` va en ``folder``» sin mover nada. Lanza ``ValueError`` si no existen."""
+    path, folder = path.expanduser().resolve(), folder.expanduser().resolve()
+    if not path.is_file() or not folder.is_dir():
+        raise ValueError("indica un archivo existente y una carpeta existente")
+    return record_choice(ctx, path, folder, extract_features(path), load)
 
 
 # --- sugerencias de las carpetas vigiladas ------------------------------------------------
