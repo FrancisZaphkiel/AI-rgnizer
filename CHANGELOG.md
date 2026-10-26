@@ -5,6 +5,10 @@ según [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+## [0.4.0] — 2026-10-26
+
+El proyecto pasa a llamarse AI-rgnizer y se distribuye como AppImage.
+
 ### Cambiado
 
 - **El proyecto pasa a llamarse AI-rgnizer.** Orden `airgnizer`, paquete `airgnizer`
