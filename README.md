@@ -4,8 +4,8 @@ Organizador inteligente de archivos para Linux (probado en CachyOS). Aprende có
 tus carpetas, sugiere destinos para lo que llega a Descargas y detecta duplicados. Todo es local
 y reversible: nada se borra, solo se envía a la papelera.
 
-Estado: Fases 0–3 completas por CLI (núcleo, acciones seguras, duplicados y aprendizaje de
-costumbres); Fase 4 en curso (vigilancia de Descargas, servicio y API D-Bus). Última versión publicada `v0.1.0`. Ver [`PLAN.md`](PLAN.md) y [`CHANGELOG.md`](CHANGELOG.md).
+Estado: Fases 0–4 completas (núcleo, acciones seguras, duplicados, aprendizaje de costumbres y
+vigilancia de Descargas como servicio con API D-Bus); última versión publicada `v0.2.0`. Ver [`PLAN.md`](PLAN.md) y [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Instalación para desarrollo (CachyOS / Arch)
 
