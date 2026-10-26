@@ -49,6 +49,19 @@ class ScanStats:
 ProgressCallback = Callable[[ScanStats], None]
 
 
+def is_hidden(name: str) -> bool:
+    """Oculto según la convención Unix (empieza por «.»), salvo los puntos suspensivos.
+
+    «... Baby One More Time.mp3» viene de un título que empieza por «...», no es un
+    archivo de configuración. Un nombre formado solo por puntos sigue siendo oculto.
+    """
+    rest = name.lstrip(".")
+    leading_dots = len(name) - len(rest)
+    if leading_dots == 0:
+        return False
+    return leading_dots < 3 or not rest
+
+
 def _signature(st: os.stat_result) -> tuple[int, int, int, int, int]:
     return (st.st_size, st.st_mtime_ns, st.st_ctime_ns, st.st_ino, st.st_dev)
 
@@ -73,7 +86,7 @@ class Scanner:
     # --- filtros -------------------------------------------------------------
 
     def is_excluded(self, name: str) -> bool:
-        if not self.settings.include_hidden and name.startswith("."):
+        if not self.settings.include_hidden and is_hidden(name):
             return True
         if name in self._excluded_names:
             return True

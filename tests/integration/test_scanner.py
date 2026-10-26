@@ -145,3 +145,30 @@ def test_mountinfo_parsing(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert mount_points(info) == {Path("/"), Path("/run/media/usuario/Mi Disco")}
+
+
+@pytest.mark.parametrize(
+    ("name", "hidden"),
+    [
+        (".bashrc", True),
+        ("..doble", True),
+        ("...", True),
+        ("....", True),
+        ("... Baby One More Time.mp3", False),
+        ("...ya me voy.txt", False),
+        ("normal.txt", False),
+    ],
+)
+def test_is_hidden(name: str, hidden: bool) -> None:
+    from organizador.scanner.scanner import is_hidden
+
+    assert is_hidden(name) is hidden
+
+
+def test_leading_ellipsis_files_are_indexed(db: Database, tmp_path: Path) -> None:
+    root = tmp_path / "Música"
+    root.mkdir()
+    (root / "... Baby One More Time.mp3").write_bytes(b"mp3")
+    (root / ".directory").write_text("[Dolphin]", encoding="utf-8")
+    Scanner(db, ScanSettings(), mounts=()).scan(root)
+    assert _indexed_names(db) == {"... Baby One More Time.mp3"}
