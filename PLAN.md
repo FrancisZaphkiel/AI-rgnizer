@@ -1,4 +1,4 @@
-# Plan de Proyecto: Organizador Inteligente de Archivos
+# Plan de Proyecto: AI-rgnizer, organizador inteligente de archivos
 
 ## 1. Objetivo
 
@@ -44,8 +44,8 @@ Construir una aplicación de escritorio para Linux (probada en **CachyOS**, con 
 ### Arquitectura (módulos)
 
 ```
-organizador/
-├── src/organizador/
+airgnizer/
+├── src/airgnizer/
 │   ├── core/          # modelos de dominio, config, rutas XDG
 │   ├── scanner/       # indexado del árbol de directorios del usuario
 │   ├── watcher/       # vigilancia de Descargas (watchdog)
@@ -170,7 +170,7 @@ Cada fase termina con una **batería de pruebas obligatoria**; la fase no se cie
 **Tareas**
 - Inicializar estructura `src/`, `pyproject.toml` con uv, dependencias base.
 - Configurar ruff, mypy, pre-commit, pytest y CI.
-- Configuración con rutas XDG (`~/.config/organizador`, `~/.local/share/organizador`).
+- Configuración con rutas XDG (`~/.config/airgnizer`, `~/.local/share/airgnizer`).
 - Documentar en `README.md` cómo instalar dependencias en CachyOS (`pacman -S python pyside6 ...` o vía uv).
 
 **Pruebas de cierre**
@@ -198,7 +198,7 @@ Cada fase termina con una **batería de pruebas obligatoria**; la fase no se cie
 - [ ] Escaneo incremental: solo reprocesa archivos modificados.
 - [ ] Mover + deshacer restaura ruta y nombre exactos (propiedad verificada con `hypothesis`).
 - [ ] `trash` deja el archivo en la papelera freedesktop correspondiente (`~/.local/share/Trash` o `$topdir/.Trash-$UID` en otro subvolumen/volumen) con su `.trashinfo`; caso de subvolumen Btrfs cubierto.
-- [ ] `os.remove`/`unlink` (incluido `Path.unlink`) solo se invocan desde `organizador.actions.fsops` (test que audita cada llamada); ningún archivo del usuario se borra: solo origenes ya copiados y verificados, temporales propios y `.trashinfo` tras restaurar.
+- [ ] `os.remove`/`unlink` (incluido `Path.unlink`) solo se invocan desde `airgnizer.actions.fsops` (test que audita cada llamada); ningún archivo del usuario se borra: solo origenes ya copiados y verificados, temporales propios y `.trashinfo` tras restaurar.
 - [ ] Movimiento entre sistemas de archivos con fallo inyectado tras la copia no pierde el origen.
 - [ ] Inyección de fallos (corte en cada estado del journal) + reinicio: la recuperación deja cada archivo en el origen o en el destino, nunca perdido ni duplicado.
 - [ ] `undo` se niega (sin daño) si el archivo fue modificado o si el origen está ocupado.
@@ -213,7 +213,7 @@ Cada fase termina con una **batería de pruebas obligatoria**; la fase no se cie
 - Similitud de imágenes con pHash y umbral de distancia de Hamming; resultados como **candidatos**, en una categoría separada de los exactos; la similitud de nombres nunca es prueba de duplicación.
 - Heurística de "copia a conservar" (siempre recomendación editable): ruta dentro de carpeta organizada > fuera de Descargas > nombre sin sufijo `(1)`/`copia` > más antigua; para imágenes, resolución, formato y calidad.
 - Hardlinks (mismo inode) y reflinks/extents compartidos de Btrfs (vía `FIEMAP`) se marcan aparte y no cuentan como espacio recuperable.
-- CLI provisional: `organizador dupes <ruta>`, `organizador similar <ruta>` (imágenes) y `organizador names <ruta>` (nombres parecidos: solo indicios, sin papelera).
+- CLI provisional: `airgnizer dupes <ruta>`, `airgnizer similar <ruta>` (imágenes) y `airgnizer names <ruta>` (nombres parecidos: solo indicios, sin papelera).
 
 **Pruebas de cierre**
 - [x] Fixtures con duplicados exactos, mismo tamaño distinto contenido, archivos vacíos, archivos grandes (>1 GiB generado sparse).
@@ -238,7 +238,7 @@ Cada fase termina con una **batería de pruebas obligatoria**; la fase no se cie
 - Modelo: primero reglas explícitas (extensión/MIME, dominio de origen, palabras clave) con prioridad cuando su soporte es alto; después `SGDClassifier(loss="log_loss")`.
 - **Clases nuevas**: `partial_fit` exige declarar todas las clases en la primera llamada; cuando aparece una carpeta nueva se reentrena el modelo completo en segundo plano (barato a esta escala). Evaluar kNN/centroides sobre vectores hasheados como alternativa.
 - **Calibración** de probabilidades (`CalibratedClassifierCV` o isotónica sobre datos separados) y **abstención**: por debajo de un umbral, no se sugiere destino.
-- CLI `organizador suggest <ruta>` para validar el modelo antes de que exista la GUI.
+- CLI `airgnizer suggest <ruta>` para validar el modelo antes de que exista la GUI.
 - Explicabilidad: top features / regla que motivó la predicción.
 - Inferencia de patrones de nombres por carpeta (plantillas con tokens `{fecha}`, `{texto}`, `{n}`, separadores, *case*).
 - Ciclo de feedback: aceptar/corregir actualiza modelo y reglas; versionado del modelo para revertir.
@@ -257,7 +257,7 @@ Cada fase termina con una **batería de pruebas obligatoria**; la fase no se cie
 
 **Resultado (2026-10-25)**: evaluación real en [`docs/benchmarks/fase3.md`](docs/benchmarks/fase3.md)
 — top‑1 96,7 %, top‑3 98,7 %, abstención 2,1 %, ECE 0,017. Las etiquetas son la carpeta en la
-que ya está cada archivo (no verificadas una a una); `organizador review` ayuda a detectar
+que ya está cada archivo (no verificadas una a una); `airgnizer review` ayuda a detectar
 las que están mal y conviene repetir la evaluación tras limpiarlas.
 
 ### Fase 4 — Vigilancia de Descargas y servicio (HU-05, HU-07, HU-09, HU-18)
@@ -306,16 +306,19 @@ las que están mal y conviene repetir la evaluación tras limpiarlas.
 
 ### Fase 6 — Empaquetado y estabilización
 **Tareas**
-- `PKGBUILD` para instalar con `makepkg -si` en CachyOS; archivo `.desktop`, icono, unidad systemd.
-- Logs rotativos en `~/.local/state/organizador`.
+- ~~`PKGBUILD` para instalar con `makepkg -si`~~ → **AppImage** autocontenida (decisión del
+  usuario: un solo archivo descargable), con `.desktop`, icono y unidad systemd que apunta a
+  la propia AppImage. Renombrado del proyecto a **AI-rgnizer** con migración de datos.
+- Logs rotativos en `~/.local/state/airgnizer`.
 - Documentación de usuario y de desarrollo.
 - Corrección de errores reportados en uso real durante 1–2 semanas.
 
 **Pruebas de cierre**
-- [ ] `makepkg` construye e instala en un contenedor Arch limpio.
-- [ ] La app aparece en el menú de aplicaciones y arranca.
-- [ ] Desinstalar no deja el servicio activo.
-- [ ] Suite completa de tests en verde; cobertura global ≥ 80 %.
+- [x] La AppImage se construye (`packaging/appimage/build.sh`) y su contenido funciona
+  aislado del repositorio (CLI, escaneo, duplicados, GUI).
+- [ ] La app aparece en el menú de aplicaciones y arranca (prueba manual en KDE).
+- [x] Desinstalar no deja el servicio activo (`service uninstall`, `desktop uninstall`).
+- [x] Suite completa de tests en verde; cobertura global ≥ 80 % (86 %, 356 tests).
 - [ ] Prueba de aceptación: uso diario en el equipo CachyOS sin pérdida de archivos.
 
 **Release `v1.0.0`**

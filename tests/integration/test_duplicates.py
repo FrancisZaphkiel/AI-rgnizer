@@ -13,16 +13,16 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from sqlalchemy import select
 
-from organizador.actions import ActionService
-from organizador.actions.errors import SourceChangedError
-from organizador.core.config import DuplicateSettings, ScanSettings
-from organizador.duplicates import DuplicateFinder, DuplicateReport, KeepPolicy, trash_redundant
-from organizador.duplicates import finder as finder_module
-from organizador.duplicates.birthtime import birth_time_ns
-from organizador.duplicates.space import disk_usage
-from organizador.scanner import Scanner
-from organizador.storage import Database
-from organizador.storage.models import File
+from airgnizer.actions import ActionService
+from airgnizer.actions.errors import SourceChangedError
+from airgnizer.core.config import DuplicateSettings, ScanSettings
+from airgnizer.duplicates import DuplicateFinder, DuplicateReport, KeepPolicy, trash_redundant
+from airgnizer.duplicates import finder as finder_module
+from airgnizer.duplicates.birthtime import birth_time_ns
+from airgnizer.duplicates.space import disk_usage
+from airgnizer.scanner import Scanner
+from airgnizer.storage import Database
+from airgnizer.storage.models import File
 
 pytestmark = pytest.mark.integration
 
@@ -322,11 +322,11 @@ def test_birth_time_of_missing_file_raises(tmp_path: Path) -> None:
 @pytest.fixture
 def reflink_dir() -> Iterator[Path]:
     """Directorio en un sistema de archivos con reflinks (tmp suele ser tmpfs)."""
-    candidates = [os.environ.get("ORGANIZADOR_REFLINK_TMP"), str(Path.home() / ".cache")]
+    candidates = [os.environ.get("AIRGNIZER_REFLINK_TMP"), str(Path.home() / ".cache")]
     for base in filter(None, candidates):
         if not Path(base).is_dir():
             continue
-        d = Path(tempfile.mkdtemp(prefix="organizador-test-", dir=base))
+        d = Path(tempfile.mkdtemp(prefix="airgnizer-test-", dir=base))
         probe = _write(d / "probe", b"x" * 8192)
         ok = subprocess.run(
             ["cp", "--reflink=always", probe, d / "probe2"], capture_output=True, check=False
@@ -432,7 +432,7 @@ def test_user_selected_keeper_is_respected(
 
 
 def test_index_writer_skips_rows_whose_signature_changed(db: Database, root: Path) -> None:
-    from organizador.storage.index import IndexWriter
+    from airgnizer.storage.index import IndexWriter
 
     _write(root / "Otros/a.bin", b"a")
     _write(root / "Otros/b.bin", b"b")

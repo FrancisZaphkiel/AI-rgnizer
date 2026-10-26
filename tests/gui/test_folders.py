@@ -5,10 +5,10 @@ from pathlib import Path
 import pytest
 from pytestqt.qtbot import QtBot
 
-from organizador.core.config import load_settings
-from organizador.gui.controller import Controller
-from organizador.gui.window import MainWindow
-from organizador.scanner.mounts import MountEntry
+from airgnizer.core.config import load_settings
+from airgnizer.gui.controller import Controller
+from airgnizer.gui.window import MainWindow
+from airgnizer.scanner.mounts import MountEntry
 from tests.gui.conftest import idle
 
 
@@ -40,7 +40,7 @@ def test_duplicates_has_its_own_folders_saved_in_config(
 def test_add_menu_offers_mounted_drives(
     qtbot: QtBot, gui: tuple[Controller, MainWindow], data: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from organizador.gui import folders
+    from airgnizer.gui import folders
 
     drive = data / "media" / "disco"
     drive.mkdir(parents=True)

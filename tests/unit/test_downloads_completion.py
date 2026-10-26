@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from organizador.downloads.completion import (
+from airgnizer.downloads.completion import (
     Arrival,
     StabilityTracker,
     has_partial_sibling,

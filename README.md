@@ -1,11 +1,52 @@
-# Organizador
+# AI-rgnizer
 
-Organizador inteligente de archivos para Linux (probado en CachyOS). Aprende cómo organizas
-tus carpetas, sugiere destinos para lo que llega a Descargas y detecta duplicados. Todo es local
-y reversible: nada se borra, solo se envía a la papelera.
+**AI-rgnizer** es un organizador inteligente de archivos para Linux (probado en CachyOS con
+KDE Plasma). Aprende cómo organizas tus carpetas, sugiere destinos para lo que llega a
+Descargas, propone nombres según tus patrones y detecta duplicados. Todo es local y
+reversible: nada se borra, solo se envía a la papelera, y cada acción se puede deshacer.
 
-Estado: Fases 0–4 completas (núcleo, acciones seguras, duplicados, aprendizaje de costumbres y
-vigilancia de Descargas como servicio con API D-Bus); última versión publicada `v0.2.0`. Ver [`PLAN.md`](PLAN.md) y [`CHANGELOG.md`](CHANGELOG.md).
+Estado: Fases 0–5 completas y empaquetado como AppImage. Ver [`PLAN.md`](PLAN.md) y
+[`CHANGELOG.md`](CHANGELOG.md).
+
+## Instalación (AppImage)
+
+Descarga `AI-rgnizer-<versión>-x86_64.AppImage` (de las *releases* del repositorio o
+construyéndola, ver [Construir la AppImage](#construir-la-appimage)), guárdala en una ruta
+fija y ábrela:
+
+```fish
+mkdir -p ~/Aplicaciones
+mv AI-rgnizer-*-x86_64.AppImage ~/Aplicaciones/
+chmod +x ~/Aplicaciones/AI-rgnizer-*-x86_64.AppImage
+~/Aplicaciones/AI-rgnizer-*-x86_64.AppImage           # abre la ventana
+```
+
+- La primera vez se añade sola al **menú de aplicaciones** (con su icono). Si mueves el
+  archivo, ábrelo una vez desde la ruta nueva y el menú se actualiza.
+- **Ajustes → «Vigilar las descargas al iniciar sesión»** instala el servicio de systemd,
+  que ejecuta la propia AppImage. Por eso conviene una ruta fija: si la mueves, ábrela una
+  vez desde la ruta nueva y el servicio (y el menú) se actualizan solos.
+- La CLI es la misma AppImage con argumentos (`./AI-rgnizer-…AppImage scan ~/Documentos`).
+  En los ejemplos de más abajo, cambia `uv run airgnizer` por la ruta de la AppImage.
+- Lleva su propio Python y Qt; del sistema solo usa glibc, `libmagic` (paquete `file`) y
+  el escritorio. En KDE sigue el modo claro u oscuro y usa el selector de archivos nativo.
+- Para quitarla: desactiva el servicio y el inicio en Ajustes, ejecuta
+  `./AI-rgnizer-…AppImage desktop uninstall` y borra el archivo. Tus datos quedan en las
+  rutas de [Datos](#datos).
+
+### Si usabas «organizador» (≤ 0.3.0)
+
+El proyecto se llamaba **organizador**. La primera vez que abras AI-rgnizer:
+
+1. detiene y retira el servicio antiguo (`organizador.service`), su activación D-Bus y su
+   entrada de inicio;
+2. **traslada sin copiar** tus datos: `~/.config/organizador` → `~/.config/airgnizer`,
+   `~/.local/share/organizador/organizador.db` → `~/.local/share/airgnizer/airgnizer.db`, y
+   lo mismo en `~/.local/state` y `~/.cache`;
+3. vuelve a activar con el nombre nuevo lo que tuvieras activado (servicio, bandeja).
+
+Nunca sobrescribe datos que ya existan con el nombre nuevo, y no traslada nada mientras el
+servicio antiguo siga en marcha.
 
 ## Instalación para desarrollo (CachyOS / Arch)
 
@@ -18,30 +59,30 @@ uv run pre-commit install    # hooks de ruff y mypy
 ## Uso
 
 ```fish
-uv run organizador paths             # rutas XDG de la aplicación
-uv run organizador scan ~/Documentos # indexa una carpeta (no modifica archivos)
-uv run organizador mv ARCHIVO DESTINO
-uv run organizador trash ARCHIVO     # envía a la papelera del sistema
-uv run organizador dupes ~/Documentos          # duplicados exactos (solo muestra)
-uv run organizador dupes ~/Documentos --trash  # pregunta por grupo y envía sobrantes a la papelera
-uv run organizador similar ~/Imágenes          # imágenes casi idénticas (solo candidatos)
-uv run organizador similar ~/Imágenes --trash  # confirmación obligatoria grupo a grupo (sin --yes)
-uv run organizador names ~/Descargas ~/Documentos  # nombres parecidos: solo indicios, no borra nada
-uv run organizador history
-uv run organizador undo ID
+uv run airgnizer paths             # rutas XDG de la aplicación
+uv run airgnizer scan ~/Documentos # indexa una carpeta (no modifica archivos)
+uv run airgnizer mv ARCHIVO DESTINO
+uv run airgnizer trash ARCHIVO     # envía a la papelera del sistema
+uv run airgnizer dupes ~/Documentos          # duplicados exactos (solo muestra)
+uv run airgnizer dupes ~/Documentos --trash  # pregunta por grupo y envía sobrantes a la papelera
+uv run airgnizer similar ~/Imágenes          # imágenes casi idénticas (solo candidatos)
+uv run airgnizer similar ~/Imágenes --trash  # confirmación obligatoria grupo a grupo (sin --yes)
+uv run airgnizer names ~/Descargas ~/Documentos  # nombres parecidos: solo indicios, no borra nada
+uv run airgnizer history
+uv run airgnizer undo ID
 ```
 
 ### Aprendizaje de costumbres
 
 ```fish
-uv run organizador train ~/Documentos ~/Música ~/Imágenes ~/Vídeos  # aprende de lo ya organizado
-uv run organizador evaluate                     # precisión con archivos no vistos (top-1/top-3, ECE)
-uv run organizador suggest ~/Descargas/*.pdf    # top-3 destinos y nombre según la carpeta; no mueve
-uv run organizador mv -p ARCHIVO CARPETA        # mueve y aprende (--no-learn para no aprender)
-uv run organizador teach ARCHIVO CARPETA        # corrige al modelo sin mover
-uv run organizador review [--move]              # archivos posiblemente mal ubicados
-uv run organizador patterns                     # cómo nombras los archivos de cada carpeta
-uv run organizador model list | model revert N  # versiones del modelo
+uv run airgnizer train ~/Documentos ~/Música ~/Imágenes ~/Vídeos  # aprende de lo ya organizado
+uv run airgnizer evaluate                     # precisión con archivos no vistos (top-1/top-3, ECE)
+uv run airgnizer suggest ~/Descargas/*.pdf    # top-3 destinos y nombre según la carpeta; no mueve
+uv run airgnizer mv -p ARCHIVO CARPETA        # mueve y aprende (--no-learn para no aprender)
+uv run airgnizer teach ARCHIVO CARPETA        # corrige al modelo sin mover
+uv run airgnizer review [--move]              # archivos posiblemente mal ubicados
+uv run airgnizer patterns                     # cómo nombras los archivos de cada carpeta
+uv run airgnizer model list | model revert N  # versiones del modelo
 ```
 
 El destino se decide por prioridad: reglas de `config.toml` → reglas aprendidas → modelo (si
@@ -64,14 +105,14 @@ exclude = ["~/Documentos/camerapy"]   # carpetas que no reflejan tus costumbres
 ### Vigilancia de Descargas
 
 ```fish
-uv run organizador watch              # vigila watched_dirs (por defecto, Descargas) hasta Ctrl+C
-uv run organizador watch --once       # revisa una vez y termina
-uv run organizador pending            # sugerencias pendientes con su id
-uv run organizador accept ID [--to CARPETA]   # mueve (se puede deshacer) y aprende
-uv run organizador ignore ID...       # el archivo se queda donde está
-uv run organizador watched            # carpetas vigiladas, su sistema de archivos y si están conectadas
-uv run organizador watched add /run/media/$USER/Disco/Descargas
-uv run organizador watched remove CARPETA
+uv run airgnizer watch              # vigila watched_dirs (por defecto, Descargas) hasta Ctrl+C
+uv run airgnizer watch --once       # revisa una vez y termina
+uv run airgnizer pending            # sugerencias pendientes con su id
+uv run airgnizer accept ID [--to CARPETA]   # mueve (se puede deshacer) y aprende
+uv run airgnizer ignore ID...       # el archivo se queda donde está
+uv run airgnizer watched            # carpetas vigiladas, su sistema de archivos y si están conectadas
+uv run airgnizer watched add /run/media/$USER/Disco/Descargas
+uv run airgnizer watched remove CARPETA
 ```
 
 Se pueden vigilar varias carpetas a la vez, también en discos externos con cualquier sistema
@@ -102,21 +143,21 @@ reconcile_seconds = 300  # relectura completa por si inotify pierde eventos
 ### Servicio y API D-Bus
 
 ```fish
-uv run organizador service install    # unidad systemd --user (Restart=on-failure) y la arranca
-uv run organizador service status
-uv run organizador service uninstall
-uv run organizador daemon             # el mismo servicio en primer plano (--no-notify)
+uv run airgnizer service install    # unidad systemd --user (Restart=on-failure) y la arranca
+uv run airgnizer service status
+uv run airgnizer service uninstall
+uv run airgnizer daemon             # el mismo servicio en primer plano (--no-notify)
 ```
 
 El servicio vigila las carpetas, muestra notificaciones con botones («Mover a X», «Elegir…»,
 «Ignorar»; «Deshacer» tras un movimiento automático) y atiende la API D-Bus que usará la
-interfaz gráfica: bus de sesión, nombre `io.github.organizador.Organizador`, interfaz
-versionada `io.github.organizador.Organizador1`. El protocolo está documentado en
-[`service/protocol.py`](src/organizador/service/protocol.py). Prueba rápida:
+interfaz gráfica: bus de sesión, nombre `io.github.airgnizer.AIrgnizer`, interfaz
+versionada `io.github.airgnizer.AIrgnizer1`. El protocolo está documentado en
+[`service/protocol.py`](src/airgnizer/service/protocol.py). Prueba rápida:
 
 ```fish
-busctl --user call io.github.organizador.Organizador /io/github/organizador/Organizador \
-    io.github.organizador.Organizador1 ListPending
+busctl --user call io.github.airgnizer.AIrgnizer /io/github/airgnizer/AIrgnizer \
+    io.github.airgnizer.AIrgnizer1 ListPending
 ```
 
 Todas las escrituras del servicio pasan por un único hilo, y solo puede haber un servicio
@@ -133,9 +174,10 @@ mover o renombrar siempre pasa por las acciones seguras y se puede deshacer.
 ### Interfaz gráfica
 
 ```fish
-uv sync --extra gui                 # PySide6
-uv run organizador gui              # ventana principal + icono de bandeja
-uv run organizador gui --hidden     # solo la bandeja (lo usa el arranque con la sesión)
+uv sync --extra gui               # PySide6-Essentials
+uv run airgnizer gui              # ventana principal + icono de bandeja
+uv run airgnizer gui --hidden     # solo la bandeja (lo usa el arranque con la sesión)
+uv run airgnizer desktop install  # entrada en el menú de aplicaciones (la AppImage lo hace sola)
 ```
 
 Las carpetas de **aprendizaje** (Ajustes → «Carpetas organizadas») y las de **búsqueda de
@@ -160,9 +202,22 @@ uv run pytest --cov
 
 Flujo de ramas: Git Flow (`feature/*` desde `develop`). Commits con Conventional Commits.
 
+### Construir la AppImage
+
+```fish
+packaging/appimage/build.sh            # → dist/AI-rgnizer-<versión>-x86_64.AppImage
+packaging/appimage/build.sh --appdir   # solo build/appimage/AI-rgnizer.AppDir (probar con su AppRun)
+```
+
+Usa el Python portable de uv (python-build-standalone), instala exactamente las versiones
+de `uv.lock`, quita de Qt y de Python lo que la aplicación no usa y empaqueta con
+[appimagetool](https://github.com/AppImage/appimagetool) (lo descarga la primera vez en
+`build/tools/`). Al publicar una etiqueta `v*`, el flujo de GitHub Actions
+`.github/workflows/appimage.yml` la construye y la adjunta a la *release*.
+
 ### Reglas de seguridad del código
 
-- Solo `organizador.actions.fsops` puede borrar del sistema de archivos (`os.unlink` y afines
+- Solo `airgnizer.actions.fsops` puede borrar del sistema de archivos (`os.unlink` y afines
   están prohibidos en el resto mediante ruff `TID251`, y un test lo verifica).
 - Toda operación sobre archivos pasa por `ActionService` y queda en el journal **antes** de
   ejecutarse.
@@ -172,7 +227,7 @@ Flujo de ramas: Git Flow (`feature/*` desde `develop`). Commits con Conventional
 
 | Ruta | Contenido |
 |---|---|
-| `~/.config/organizador/config.toml` | Configuración |
-| `~/.local/share/organizador/organizador.db` | Índice, journal y aprendizaje (SQLite) |
-| `~/.local/share/organizador/models/` | Versiones del modelo (`model-NNNN.joblib`, `current`) |
-| `~/.local/state/organizador/logs/` | Registros |
+| `~/.config/airgnizer/config.toml` | Configuración |
+| `~/.local/share/airgnizer/airgnizer.db` | Índice, journal y aprendizaje (SQLite) |
+| `~/.local/share/airgnizer/models/` | Versiones del modelo (`model-NNNN.joblib`, `current`) |
+| `~/.local/state/airgnizer/logs/` | Registros |

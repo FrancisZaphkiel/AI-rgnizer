@@ -20,8 +20,8 @@ def fake_systemctl(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ...]]:
 
     ``systemctl --user`` no depende de ``HOME``: aislar el directorio personal no basta.
     """
-    from organizador import maintenance
-    from organizador.service import systemd
+    from airgnizer import maintenance
+    from airgnizer.service import systemd
 
     calls: list[tuple[str, ...]] = []
 

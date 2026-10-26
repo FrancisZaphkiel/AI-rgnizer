@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import inspect, select, text
 
-from organizador.storage import Database
-from organizador.storage.db import downgrade, upgrade
-from organizador.storage.models import ActionJournal, ActionKind, ActionState, Base
+from airgnizer.storage import Database
+from airgnizer.storage.db import downgrade, upgrade
+from airgnizer.storage.models import ActionJournal, ActionKind, ActionState, Base
 
 pytestmark = pytest.mark.integration
 

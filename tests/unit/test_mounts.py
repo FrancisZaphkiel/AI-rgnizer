@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from organizador.scanner.mounts import filesystem_of, mounts
+from airgnizer.scanner.mounts import filesystem_of, mounts
 
 MOUNTINFO = """\
 22 1 0:20 /@ / rw,relatime shared:1 - btrfs /dev/nvme0n1p2 rw
@@ -40,7 +40,7 @@ def test_filesystem_of_picks_longest_mount(tmp_path: Path) -> None:
 
 
 def test_user_mounts_lists_external_drives_not_system_ones(tmp_path: Path) -> None:
-    from organizador.scanner.mounts import user_mounts
+    from airgnizer.scanner.mounts import user_mounts
 
     info = tmp_path / "mountinfo"
     info.write_text(

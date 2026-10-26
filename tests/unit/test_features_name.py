@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from organizador.features.name import analyse_name, fold, split_name, strip_video_id
+from airgnizer.features.name import analyse_name, fold, split_name, strip_video_id
 
 
 @pytest.mark.parametrize(

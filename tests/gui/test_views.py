@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from pytestqt.qtbot import QtBot
 
-from organizador.gui.controller import Controller
-from organizador.gui.window import MainWindow
+from airgnizer.gui.controller import Controller
+from airgnizer.gui.window import MainWindow
 from tests.gui.conftest import idle
 
 
@@ -109,7 +109,7 @@ def test_long_scan_does_not_block_the_ui(
 ) -> None:
     from PySide6.QtCore import QTimer
 
-    from organizador.gui.views import duplicates
+    from airgnizer.gui.views import duplicates
 
     ctrl, window = gui
     real = duplicates.find_duplicates
@@ -136,7 +136,7 @@ def test_erase_learned_data(
 ) -> None:
     from sqlalchemy import func, select
 
-    from organizador.storage.models import ActionJournal, DownloadSuggestion
+    from airgnizer.storage.models import ActionJournal, DownloadSuggestion
 
     ctrl, window = gui
     ctx = ctrl.ctx

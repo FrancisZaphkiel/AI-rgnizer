@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from organizador.duplicates import DuplicateFile, DuplicateGroup, KeepPolicy
-from organizador.duplicates.keep import has_copy_marker
+from airgnizer.duplicates import DuplicateFile, DuplicateGroup, KeepPolicy
+from airgnizer.duplicates.keep import has_copy_marker
 
 HOME = Path("/home/u")
 POLICY = KeepPolicy(organized_dirs=[HOME / "Documentos"], watched_dirs=[HOME / "Descargas"])

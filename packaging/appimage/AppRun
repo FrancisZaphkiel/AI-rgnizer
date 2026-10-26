@@ -1,0 +1,13 @@
+#!/bin/sh
+# Punto de entrada de la AppImage.
+#   Sin argumentos (doble clic, menú): abre la interfaz gráfica.
+#   Con argumentos: la CLI completa, p. ej. «./AI-rgnizer-x86_64.AppImage scan ~/Documentos».
+HERE="$(dirname "$(readlink -f "$0")")"
+PY="$HERE/usr/python/bin/python3"
+# Sin bibliotecas del usuario (~/.local/lib/python3.x) que puedan chocar con las propias.
+export PYTHONNOUSERSITE=1
+export PYTHONDONTWRITEBYTECODE=1
+if [ "$#" -eq 0 ]; then
+    exec "$PY" -m airgnizer gui
+fi
+exec "$PY" -m airgnizer "$@"

@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from organizador.cli import main
-from organizador.core.config import LearningSettings, Settings, WatchSettings, save_settings
-from organizador.core.paths import AppPaths
+from airgnizer.cli import main
+from airgnizer.core.config import LearningSettings, Settings, WatchSettings, save_settings
+from airgnizer.core.paths import AppPaths
 
 pytestmark = pytest.mark.integration
 
@@ -110,5 +110,5 @@ def test_watched_add_list_remove(
     assert str(disk) not in capsys.readouterr().out
     assert main(["watched", "remove", str(disk)]) == 2
     # El resto de config.toml se conserva.
-    config = (isolated_home / ".config/organizador/config.toml").read_text()
+    config = (isolated_home / ".config/airgnizer/config.toml").read_text()
     assert "stable_seconds" in config and "ext:pdf" in config

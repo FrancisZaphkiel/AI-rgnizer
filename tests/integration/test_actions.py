@@ -11,18 +11,18 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from organizador.actions import ActionService, fsops
-from organizador.actions.errors import (
+from airgnizer.actions import ActionService, fsops
+from airgnizer.actions.errors import (
     ConcurrentOperationError,
     DestinationOccupiedError,
     InvalidTargetError,
     NotUndoableError,
     SourceChangedError,
 )
-from organizador.actions.journal import Journal
-from organizador.core.config import ActionSettings
-from organizador.storage import Database
-from organizador.storage.models import ActionKind, ActionState
+from airgnizer.actions.journal import Journal
+from airgnizer.core.config import ActionSettings
+from airgnizer.storage import Database
+from airgnizer.storage.models import ActionKind, ActionState
 
 pytestmark = pytest.mark.integration
 
@@ -290,7 +290,7 @@ def test_trash_cross_device_uses_topdir_trash(
     service: ActionService, workdir: Path, xdg_data: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Simula un subvolumen Btrfs: el rename a la papelera del home da EXDEV."""
-    from organizador.actions import trash as trash_mod
+    from airgnizer.actions import trash as trash_mod
 
     src = _write(workdir / "Descargas/sub.txt")
     real = fsops.move_no_replace
@@ -358,7 +358,7 @@ def test_concurrent_operation_on_same_file_is_rejected(
 def test_active_journal_entry_blocks_new_operation(
     db: Database, service: ActionService, workdir: Path
 ) -> None:
-    from organizador.actions.fingerprint import Fingerprint
+    from airgnizer.actions.fingerprint import Fingerprint
 
     src = _write(workdir / "Descargas/j.txt")
     Journal(db).begin(
@@ -378,7 +378,7 @@ def test_active_journal_entry_blocks_new_operation(
 def test_unlink_only_called_from_fsops(
     service: ActionService, workdir: Path, xdg_data: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Ningún borrado fuera de ``organizador.actions.fsops`` (incluye ``Path.unlink``)."""
+    """Ningún borrado fuera de ``airgnizer.actions.fsops`` (incluye ``Path.unlink``)."""
     offenders: list[str] = []
     real_unlink, real_remove = os.unlink, os.remove  # noqa: TID251
 
@@ -388,7 +388,7 @@ def test_unlink_only_called_from_fsops(
             while frame is not None and frame.f_globals.get("__name__", "").startswith("pathlib"):
                 frame = frame.f_back  # Path.unlink delega en os.unlink
             module = frame.f_globals.get("__name__", "") if frame else ""
-            if module.startswith("organizador") and module != "organizador.actions.fsops":
+            if module.startswith("airgnizer") and module != "airgnizer.actions.fsops":
                 offenders.append(f"{module}: {path}")
             real(path, *args, **kwargs)
 
@@ -481,7 +481,7 @@ def test_undo_refuses_changed_content_despite_tolerance(
 
 
 def test_trash_without_folder_permission_says_so(tmp_path: Path) -> None:
-    from organizador.actions.trash import TrashError, move_to_trash
+    from airgnizer.actions.trash import TrashError, move_to_trash
 
     folder = tmp_path / "de_root"
     folder.mkdir()

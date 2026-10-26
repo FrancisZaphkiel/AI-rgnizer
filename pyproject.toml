@@ -1,6 +1,6 @@
 [project]
-name = "organizador"
-version = "0.3.0"
+name = "ai-rgnizer"
+version = "0.4.0"
 description = "Organizador inteligente de archivos para Linux: aprende tus costumbres, sugiere destinos y detecta duplicados."
 readme = "README.md"
 license = "MIT"
@@ -30,14 +30,14 @@ dependencies = [
 ]
 
 [project.scripts]
-organizador = "organizador.cli:main"
+airgnizer = "airgnizer.cli:main"
 
 [project.gui-scripts]
-organizador-gui = "organizador.gui.app:main"
+airgnizer-gui = "airgnizer.gui.app:main"
 
 [project.optional-dependencies]
 gui = [
-    "pyside6>=6.8",
+    "pyside6-essentials>=6.8",
 ]
 
 [dependency-groups]
@@ -50,7 +50,7 @@ dev = [
     "mypy>=1.13",
     "pre-commit>=4.0",
     "pytest-qt>=4.5.0",
-    "pyside6>=6.8",
+    "pyside6-essentials>=6.8",
 ]
 
 [build-system]
@@ -58,7 +58,7 @@ requires = ["hatchling>=1.26"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/organizador"]
+packages = ["src/airgnizer"]
 
 # --- Calidad -----------------------------------------------------------------
 
@@ -81,22 +81,22 @@ ignore = [
 "tests/**" = ["PLR2004", "S101", "PLC0415"]
 # Servidor D-Bus falso: nombres y firmas impuestos por org.freedesktop.Notifications.
 "tests/integration/test_service.py" = ["N802", "PLR0917"]
-"src/organizador/storage/migrations/**" = ["N999"]
-"src/organizador/actions/fsops.py" = ["TID251", "PTH108"]
+"src/airgnizer/storage/migrations/**" = ["N999"]
+"src/airgnizer/actions/fsops.py" = ["TID251", "PTH108"]
 # D-Bus: nombres de métodos, propiedades y señales en CamelCase.
-"src/organizador/service/api.py" = ["N802"] # único módulo con borrados auditados
+"src/airgnizer/service/api.py" = ["N802"] # único módulo con borrados auditados
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
-"os.remove".msg = "Prohibido: los borrados solo se permiten en organizador.actions.fsops."
-"os.unlink".msg = "Prohibido: los borrados solo se permiten en organizador.actions.fsops."
-"shutil.rmtree".msg = "Prohibido: los borrados solo se permiten en organizador.actions.fsops."
-"shutil.move".msg = "Usa organizador.actions.fsops.move_no_replace (no sobrescribe)."
+"os.remove".msg = "Prohibido: los borrados solo se permiten en airgnizer.actions.fsops."
+"os.unlink".msg = "Prohibido: los borrados solo se permiten en airgnizer.actions.fsops."
+"shutil.rmtree".msg = "Prohibido: los borrados solo se permiten en airgnizer.actions.fsops."
+"shutil.move".msg = "Usa airgnizer.actions.fsops.move_no_replace (no sobrescribe)."
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
 mypy_path = "src"
-packages = ["organizador"]
+packages = ["airgnizer"]
 warn_unreachable = true
 
 [[tool.mypy.overrides]]
@@ -114,7 +114,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["organizador"]
+source = ["airgnizer"]
 branch = true
 
 [tool.coverage.report]

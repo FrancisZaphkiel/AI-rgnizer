@@ -3,8 +3,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from organizador.core.paths import FolderSet
-from organizador.learning.folders import FolderNames
+from airgnizer.core.paths import FolderSet
+from airgnizer.learning.folders import FolderNames
 
 
 def test_folder_set_matches_folders_and_their_contents_only() -> None:

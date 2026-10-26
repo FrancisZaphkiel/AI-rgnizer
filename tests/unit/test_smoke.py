@@ -2,12 +2,12 @@ from pathlib import Path
 
 import pytest
 
-import organizador
-from organizador.cli import main
+import airgnizer
+from airgnizer.cli import main
 
 
 def test_package_imports() -> None:
-    assert organizador.APP_NAME == "organizador"
+    assert airgnizer.APP_NAME == "airgnizer"
 
 
 def test_cli_paths_runs(isolated_home: Path, capsys: pytest.CaptureFixture[str]) -> None:

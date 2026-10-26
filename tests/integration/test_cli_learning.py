@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from organizador.cli import main
-from organizador.core.config import Settings, save_settings
-from organizador.core.paths import AppPaths
+from airgnizer.cli import main
+from airgnizer.core.config import Settings, save_settings
+from airgnizer.core.paths import AppPaths
 
 pytestmark = pytest.mark.integration
 
@@ -30,7 +30,7 @@ def test_suggest_without_model_uses_type_destination(
     probe.write_bytes(b"%PDF-1.4")
     assert main(["suggest", str(probe)]) == 0
     captured = capsys.readouterr()
-    assert "organizador train" in captured.err
+    assert "airgnizer train" in captured.err
     assert f"→   —  {isolated_home / 'Documents'}" in captured.out
     assert "destino por defecto" in captured.out
 
