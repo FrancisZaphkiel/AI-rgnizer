@@ -138,6 +138,11 @@ uv run organizador gui              # ventana principal + icono de bandeja
 uv run organizador gui --hidden     # solo la bandeja (lo usa el arranque con la sesión)
 ```
 
+Las carpetas de **aprendizaje** (Ajustes → «Carpetas organizadas») y las de **búsqueda de
+duplicados** (sección Duplicados → «Buscar duplicados en») son listas distintas; si la de
+duplicados está vacía se usan las organizadas. Cada «Añadir…» ofrece también las unidades
+montadas (`/run/media`, `/media`, `/mnt` y de red).
+
 En **Descargas**, **Abrir** (o doble clic) abre el archivo con su aplicación predeterminada
 (visor de imágenes, reproductor, editor…) para comprobar la sugerencia antes de aceptarla.
 Si el servicio está en marcha la GUI le pide las operaciones por D-Bus y se actualiza con

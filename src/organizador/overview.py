@@ -87,9 +87,7 @@ def recoverable_from_index(ctx: AppContext, roots: Sequence[Path] | None = None)
     Usa los hashes guardados por la última búsqueda (no lee archivos); los enlaces duros
     cuentan una sola vez porque no ocupan más.
     """
-    roots = (
-        list(roots) if roots is not None else [r.expanduser() for r in ctx.settings.indexed_dirs]
-    )
+    roots = list(roots) if roots is not None else ctx.settings.duplicate_roots()
     if not roots:
         return Recoverable(0, 0)
     with ctx.db.session() as s:

@@ -9,9 +9,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFormLayout,
-    QGroupBox,
     QHBoxLayout,
-    QListWidget,
     QMessageBox,
     QPushButton,
     QSpinBox,
@@ -24,44 +22,9 @@ from organizador.app import reload_settings
 from organizador.core.config import set_config_value
 from organizador.gui.common import heading
 from organizador.gui.controller import Controller
+from organizador.gui.folders import FolderList
 
 MODES = [("suggest", "Solo sugerir"), ("auto", "Mover solo si la confianza es alta")]
-
-
-class _FolderList(QGroupBox):
-    def __init__(self, title: str, hint: str) -> None:
-        super().__init__(title)
-        layout = QHBoxLayout(self)
-        self.list = QListWidget()
-        self.list.setToolTip(hint)
-        layout.addWidget(self.list)
-        buttons = QVBoxLayout()
-        add = QPushButton("Añadir…")
-        add.clicked.connect(self._add)
-        remove = QPushButton("Quitar")
-        remove.clicked.connect(self._remove)
-        buttons.addWidget(add)
-        buttons.addWidget(remove)
-        buttons.addStretch()
-        layout.addLayout(buttons)
-
-    def set_paths(self, paths: list[Path]) -> None:
-        self.list.clear()
-        self.list.addItems([str(p) for p in paths])
-
-    def paths(self) -> list[str]:
-        return [self.list.item(i).text() for i in range(self.list.count())]
-
-    def add_path(self, path: str) -> None:
-        if path and path not in self.paths():
-            self.list.addItem(path)
-
-    def _add(self) -> None:
-        self.add_path(QFileDialog.getExistingDirectory(self, self.title(), str(Path.home())))
-
-    def _remove(self) -> None:
-        for item in self.list.selectedItems():
-            self.list.takeItem(self.list.row(item))
 
 
 class SettingsView(QWidget):
@@ -70,14 +33,17 @@ class SettingsView(QWidget):
         self._ctrl = ctrl
         layout = QVBoxLayout(self)
         layout.addWidget(heading("Ajustes"))
-        self.watched = _FolderList(
+        self.watched = FolderList(
             "Carpetas donde llegan descargas",
             "También en discos externos: se vigilan al conectarlos",
         )
-        self.indexed = _FolderList(
-            "Carpetas organizadas (de ellas aprendo)", "Donde guardas tus archivos ya ordenados"
+        self.indexed = FolderList(
+            "Carpetas organizadas (de ellas aprendo)",
+            "Donde guardas tus archivos ya ordenados: de ellas aprendo dónde va cada cosa. Los "
+            "duplicados se buscan en las carpetas que elijas en la sección Duplicados (si no "
+            "eliges ninguna, en estas).",
         )
-        self.excluded = _FolderList(
+        self.excluded = FolderList(
             "Excluidas del aprendizaje",
             "Carpetas que no reflejan tus costumbres (salidas de programas…)",
         )

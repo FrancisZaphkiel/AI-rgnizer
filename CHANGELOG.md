@@ -16,6 +16,12 @@ según [SemVer](https://semver.org/lang/es/).
 - GUI: **Abrir** (y doble clic) en Descargas, Duplicados e Historial abre el archivo con
   la aplicación predeterminada del sistema, para comprobar una sugerencia antes de
   aceptarla. En Descargas el doble clic ya no acepta.
+- GUI: los botones «Añadir…» y «Mover a…» muestran las **unidades montadas** (discos
+  externos, USB, particiones de otros sistemas, red) con su sistema de archivos y espacio
+  libre; al elegir una, el selector se abre dentro de ella.
+- **Carpetas propias para buscar duplicados** (`[duplicates] dirs`), editables en la
+  sección Duplicados; si está vacía se usan las carpetas organizadas. Antes eran siempre
+  las mismas que las de aprendizaje.
 - **La CLI delega en el servicio** cuando está en marcha sobre la misma base de datos
   (único escritor): `mv`, `rename`, `trash`, `undo`, `accept`, `ignore`, `teach`,
   `review --move` y las papeleras de `dupes`/`similar`. Opción global `--local`.

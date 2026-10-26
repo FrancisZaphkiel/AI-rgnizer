@@ -52,6 +52,8 @@ class DuplicateSettings:
     # Calibrado: redimensionar o recomprimir da ≤ 2; fotos distintas, ≥ 20; capturas de
     # pantalla distintas de una misma aplicación, desde 0 (por eso son solo candidatos).
     image_max_distance: int = 4
+    # Dónde buscar duplicados; vacía: en las carpetas organizadas (``indexed_dirs``).
+    dirs: list[str] = field(default_factory=list)
 
 
 def default_type_destinations() -> dict[str, str]:
@@ -129,6 +131,11 @@ class Settings:
     duplicates: DuplicateSettings = field(default_factory=DuplicateSettings)
     learning: LearningSettings = field(default_factory=LearningSettings)
     watch: WatchSettings = field(default_factory=WatchSettings)
+
+    def duplicate_roots(self) -> list[Path]:
+        """Carpetas donde buscar duplicados: las elegidas o, si no hay, las organizadas."""
+        chosen = [Path(d) for d in self.duplicates.dirs]
+        return [p.expanduser() for p in (chosen or self.indexed_dirs)]
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)

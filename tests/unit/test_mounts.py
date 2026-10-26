@@ -37,3 +37,27 @@ def test_filesystem_of_picks_longest_mount(tmp_path: Path) -> None:
     assert kind("/run/media/ana/USB/bajadas") == ("exfat", False)
     assert kind("/mnt/nas/x") == ("cifs", True)
     assert kind("/mnt/vps/x") == ("fuse.sshfs", True)
+
+
+def test_user_mounts_lists_external_drives_not_system_ones(tmp_path: Path) -> None:
+    from organizador.scanner.mounts import user_mounts
+
+    info = tmp_path / "mountinfo"
+    info.write_text(
+        "1 0 0:1 / / rw - btrfs /dev/nvme0n1p2 rw\n"
+        "2 1 0:1 /@home /home rw - btrfs /dev/nvme0n1p2 rw\n"
+        "3 1 0:2 / /boot/efi rw - vfat /dev/nvme0n1p1 rw\n"
+        "4 1 0:3 / /run/media/ana/unidad2nvme rw - btrfs /dev/nvme1n1p1 rw\n"
+        "5 1 0:4 / /run/media/ana/3A96B7FF96B7BA29 rw - ntfs3 /dev/sda1 rw\n"
+        "6 1 0:5 / /mnt/fotos rw - exfat /dev/sdb1 rw\n"
+        "7 1 0:6 / /srv/nas rw - nfs4 nas:/fotos rw\n"
+        "8 1 0:7 / /run/media rw - tmpfs tmpfs rw\n",
+        encoding="utf-8",
+    )
+    points = [str(e.point) for e in user_mounts(info)]
+    assert points == [
+        "/mnt/fotos",
+        "/run/media/ana/3A96B7FF96B7BA29",
+        "/run/media/ana/unidad2nvme",
+        "/srv/nas",
+    ]

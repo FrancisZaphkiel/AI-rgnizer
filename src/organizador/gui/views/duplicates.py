@@ -28,11 +28,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from organizador.app import AppContext
+from organizador.app import AppContext, reload_settings
+from organizador.core.config import set_config_value
 from organizador.duplicates import DuplicateFinder, DuplicateGroup, KeepPolicy, trash_redundant
 from organizador.duplicates.finder import DuplicateReport
 from organizador.gui.common import heading, human_size, icon, open_path, pretty
 from organizador.gui.controller import Controller
+from organizador.gui.folders import FolderList
 from organizador.scanner import Scanner
 
 THUMB = 48
@@ -44,7 +46,7 @@ def find_duplicates(
     ctx: AppContext, cancel: threading.Event, progress: Callable[[str], None]
 ) -> DuplicateReport:
     """Reescanea las carpetas indexadas y busca duplicados exactos (en segundo plano)."""
-    roots = [r.expanduser() for r in ctx.settings.indexed_dirs if r.expanduser().is_dir()]
+    roots = [r for r in ctx.settings.duplicate_roots() if r.is_dir()]
     scanner = Scanner(ctx.db, ctx.settings.scan)
     for root in roots:
         if cancel.is_set():
@@ -97,6 +99,14 @@ class DuplicatesView(QWidget):
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)
+        self.where = FolderList(
+            "Buscar duplicados en",
+            "Carpetas y unidades donde buscar copias; se guardan al cambiarlas",
+            "Ninguna elegida: se buscan en las carpetas organizadas de Ajustes.",
+        )
+        self.where.setMaximumHeight(150)
+        self.where.changed.connect(self._save_where)
+        layout.addWidget(self.where)
         top = QHBoxLayout()
         self.search = QPushButton(
             icon(self, "edit-find", QStyle.StandardPixmap.SP_FileDialogContentsView),
@@ -136,11 +146,25 @@ class DuplicatesView(QWidget):
         layout.addLayout(bottom)
         self._update_buttons()
 
+    def refresh(self) -> None:
+        self.where.set_paths(self._ctrl.ctx.settings.duplicates.dirs)
+
+    def _save_where(self) -> None:
+        ctx, dirs = self._ctrl.ctx, self.where.paths()
+
+        def work() -> None:
+            set_config_value(ctx.paths, "duplicates.dirs", dirs)
+            reload_settings(ctx)
+
+        self._ctrl.ops.submit(
+            work, on_done=lambda _r: self._ctrl.notify_changed(), on_error=self._ctrl.report
+        )
+
     # --- búsqueda ----------------------------------------------------------------------
 
     def start_search(self) -> None:
-        if not self._ctrl.ctx.settings.indexed_dirs:
-            self.status.setText("Configura en Ajustes las carpetas indexadas.")
+        if not self._ctrl.ctx.settings.duplicate_roots():
+            self.status.setText("Añade arriba las carpetas o unidades donde buscar.")
             return
         self._cancel = cancel = threading.Event()
         self.search.setEnabled(False)

@@ -8,7 +8,6 @@ from pathlib import Path
 from PySide6.QtCore import QItemSelectionModel, Qt
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import (
-    QFileDialog,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -31,6 +30,7 @@ from organizador.gui.common import (
     table,
 )
 from organizador.gui.controller import Controller
+from organizador.gui.folders import folder_menu
 from organizador.storage.models import DownloadSuggestion
 
 
@@ -80,7 +80,9 @@ class DownloadsView(QWidget):
         )
         self.open.clicked.connect(self.open_selected)
         self.accept.clicked.connect(self.accept_selected)
-        self.move_to.clicked.connect(self.move_selected)
+        self.move_to.setMenu(
+            folder_menu(self, "Mover a…", self._start_folder, self.move_selected_to)
+        )
         self.ignore.clicked.connect(self.ignore_selected)
         buttons.addWidget(self.open)
         buttons.addStretch()
@@ -166,19 +168,15 @@ class DownloadsView(QWidget):
         rows = [r for r in self.selected() if r.destination]
         self._run_each(rows, lambda r: self._ctrl.backend.accept(r.id))
 
-    def move_selected(self) -> None:
+    def _start_folder(self) -> str:
         rows = self.selected()
-        if not rows:
-            return
-        start = rows[0].destination or str(Path.home())
-        folder = self.choose_folder(start)
-        if folder is not None:
-            self._run_each(rows, lambda r: self._ctrl.backend.accept(r.id, folder))
+        return (rows[0].destination if rows else None) or str(Path.home())
 
-    def choose_folder(self, start: str) -> Path | None:
-        """Selector de carpetas del sistema (portal de KDE en Plasma)."""
-        chosen = QFileDialog.getExistingDirectory(self, "Mover a…", start)
-        return Path(chosen) if chosen else None
+    def move_selected_to(self, folder: Path) -> None:
+        """Mueve las seleccionadas a ``folder`` (elegida en el menú, o una unidad montada)."""
+        rows = self.selected()
+        if rows:
+            self._run_each(rows, lambda r: self._ctrl.backend.accept(r.id, folder))
 
     def open_selected(self) -> None:
         chosen = self.selected()
