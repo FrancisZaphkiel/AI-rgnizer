@@ -429,3 +429,26 @@ def test_user_selected_keeper_is_respected(
 
     assert [r.source for r in result.trashed] == [proposed]
     assert chosen.exists()
+
+
+def test_index_writer_skips_rows_whose_signature_changed(db: Database, root: Path) -> None:
+    from organizador.duplicates.index import IndexWriter
+
+    _write(root / "Otros/a.bin", b"a")
+    _write(root / "Otros/b.bin", b"b")
+    Scanner(db, ScanSettings(), mounts=()).scan(root)
+    with db.session() as s:
+        rows = {
+            f.name: (f.id, (f.size, f.mtime_ns, f.ctime_ns, f.inode, f.device))
+            for f in s.scalars(select(File))
+        }
+        writer = IndexWriter(s)
+        a_id, a_sig = rows["a.bin"]
+        b_id, b_sig = rows["b.bin"]
+        writer.queue([a_id], a_sig, {"content_hash": "vigente"})
+        stale = (b_sig[0], b_sig[1] - 1, *b_sig[2:])  # firma de una versión anterior
+        writer.queue([b_id], stale, {"content_hash": "obsoleto"})
+        writer.flush()
+    with db.session() as s:
+        hashes = dict(s.execute(select(File.name, File.content_hash)).all())
+    assert hashes == {"a.bin": "vigente", "b.bin": None}

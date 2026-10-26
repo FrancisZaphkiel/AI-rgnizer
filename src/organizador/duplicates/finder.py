@@ -26,20 +26,19 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
-from sqlalchemy import ColumnElement, func, or_, select, update
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.orm import Session
 
 from organizador.core.config import DuplicateSettings
 from organizador.duplicates import hashing
 from organizador.duplicates.birthtime import birth_time_ns
+from organizador.duplicates.index import IndexWriter
 from organizador.duplicates.keep import KeepPolicy
 from organizador.duplicates.space import disk_usage
 from organizador.storage import Database
 from organizador.storage.models import Directory, File
 
 log = logging.getLogger(__name__)
-
-COMMIT_EVERY_FILES = 200
 
 InodeKey = tuple[int, int]  # (dispositivo, inode)
 HashKind = Literal["partial", "full"]
@@ -163,7 +162,7 @@ class _Candidate:
             self.content_hash = digest
 
 
-def _birth_or_none(path: Path) -> int | None:
+def birth_or_none(path: Path) -> int | None:
     try:
         return birth_time_ns(path)
     except OSError as exc:
@@ -182,7 +181,7 @@ def _distinct_inodes(group: Iterable[_Candidate]) -> int:
     return len({c.inode_key for c in group})
 
 
-def _under_roots(roots: Sequence[Path]) -> ColumnElement[bool]:
+def under_roots(roots: Sequence[Path]) -> ColumnElement[bool]:
     clauses: list[ColumnElement[bool]] = []
     for root in roots:
         prefix = str(root).rstrip("/") + "/"
@@ -210,6 +209,7 @@ class DuplicateFinder:
         with self._db.new_session() as session:
             job = _FindJob(self._settings, session, report.stats, cancel, progress)
             confirmed = job.run(resolved)
+            job.writer.flush()
             session.commit()
         if not report.stats.cancelled:
             report.groups = [self._build_group(h, members) for h, members in confirmed.items()]
@@ -235,7 +235,7 @@ class DuplicateFinder:
                     device=c.device,
                     inode=c.inode,
                     nlink=c.nlink,
-                    birth_ns=_birth_or_none(c.path),
+                    birth_ns=birth_or_none(c.path),
                     exclusive_bytes=usage[c.inode_key],
                 )
             )
@@ -263,7 +263,7 @@ class _FindJob:
         self.stats = stats
         self.cancel = cancel
         self.progress = progress
-        self._pending_writes = 0
+        self.writer = IndexWriter(session)
 
     def run(self, roots: Sequence[Path]) -> dict[str, list[_Candidate]]:
         by_size = self.load_candidates(roots)
@@ -297,7 +297,7 @@ class _FindJob:
     # --- etapa 1: tamaño -------------------------------------------------------
 
     def load_candidates(self, roots: Sequence[Path]) -> dict[int, list[_Candidate]]:
-        in_roots = _under_roots(roots)
+        in_roots = under_roots(roots)
         repeated_sizes = (
             select(File.size)
             .join(Directory)
@@ -401,22 +401,5 @@ class _FindJob:
         return True
 
     def store(self, links: list[_Candidate], kind: HashKind, digest: str) -> None:
-        column = File.partial_hash if kind == "partial" else File.content_hash
-        first = links[0]
-        # La condición sobre la firma evita pisar una fila que el escáner acaba de actualizar.
-        self.session.execute(
-            update(File)
-            .where(
-                File.id.in_([c.file_id for c in links]),
-                File.size == first.size,
-                File.mtime_ns == first.mtime_ns,
-                File.ctime_ns == first.ctime_ns,
-                File.inode == first.inode,
-                File.device == first.device,
-            )
-            .values({column: digest})
-        )
-        self._pending_writes += 1
-        if self._pending_writes >= COMMIT_EVERY_FILES:
-            self.session.commit()
-            self._pending_writes = 0
+        column = "partial_hash" if kind == "partial" else "content_hash"
+        self.writer.queue([c.file_id for c in links], links[0].signature, {column: digest})

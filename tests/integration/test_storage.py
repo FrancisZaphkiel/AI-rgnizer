@@ -53,3 +53,12 @@ def test_session_rolls_back_on_error(db: Database) -> None:
         raise RuntimeError
     with db.session() as s:
         assert s.scalars(select(ActionJournal)).first() is None
+
+
+def test_models_match_migrations(db: Database) -> None:
+    """Todo cambio en los modelos debe venir con su revisión de Alembic."""
+    from alembic.autogenerate import compare_metadata
+    from alembic.migration import MigrationContext
+
+    with db.engine.connect() as conn:
+        assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []

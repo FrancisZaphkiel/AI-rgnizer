@@ -213,20 +213,21 @@ Cada fase termina con una **batería de pruebas obligatoria**; la fase no se cie
 - Similitud de imágenes con pHash y umbral de distancia de Hamming; resultados como **candidatos**, en una categoría separada de los exactos; la similitud de nombres nunca es prueba de duplicación.
 - Heurística de "copia a conservar" (siempre recomendación editable): ruta dentro de carpeta organizada > fuera de Descargas > nombre sin sufijo `(1)`/`copia` > más antigua; para imágenes, resolución, formato y calidad.
 - Hardlinks (mismo inode) y reflinks/extents compartidos de Btrfs (vía `FIEMAP`) se marcan aparte y no cuentan como espacio recuperable.
-- CLI provisional: `organizador dupes <ruta>`.
+- CLI provisional: `organizador dupes <ruta>`, `organizador similar <ruta>` (imágenes) y `organizador names <ruta>` (nombres parecidos: solo indicios, sin papelera).
 
 **Pruebas de cierre**
-- [ ] Fixtures con duplicados exactos, mismo tamaño distinto contenido, archivos vacíos, archivos grandes (>1 GiB generado sparse).
-- [ ] Cero falsos positivos en duplicados exactos.
-- [ ] Imágenes redimensionadas/recomprimidas se agrupan; imágenes distintas no (umbral validado).
-- [ ] Hardlinks no se proponen para eliminar; reflinks no suman espacio recuperable.
-- [ ] Ningún candidato similar se envía a la papelera sin confirmación explícita por grupo.
-- [ ] Heurística de conservación elige la copia esperada en casos de prueba.
-- [ ] Enviar sobrantes a papelera y restaurarlos funciona de extremo a extremo.
-- [ ] Benchmark (condiciones documentadas: equipo, SSD, distribución de tamaños), medido por separado:
+- [x] Fixtures con duplicados exactos, mismo tamaño distinto contenido, archivos vacíos, archivos grandes (>1 GiB generado sparse).
+- [x] Cero falsos positivos en duplicados exactos.
+- [x] Imágenes redimensionadas/recomprimidas se agrupan; imágenes distintas no (umbral validado).
+- [x] Hardlinks no se proponen para eliminar; reflinks no suman espacio recuperable.
+- [x] Ningún candidato similar se envía a la papelera sin confirmación explícita por grupo.
+- [x] Heurística de conservación elige la copia esperada en casos de prueba.
+- [x] Enviar sobrantes a papelera y restaurarlos funciona de extremo a extremo.
+- [x] Benchmark (condiciones documentadas: equipo, SSD, distribución de tamaños), medido por separado:
   - escaneo inicial de metadatos de 50 000 archivos: objetivo < 2 min;
   - escaneo incremental sin cambios: objetivo < 15 s;
   - hashing: reportado en MB/s (no comparable con el escaneo).
+  - Resultados: [`docs/benchmarks/fase2.md`](docs/benchmarks/fase2.md) (2,3 s y 1,0 s en el árbol sintético; 12,5 s de incremental con 162 637 archivos reales).
 
 **Release `v0.1.0`**
 
