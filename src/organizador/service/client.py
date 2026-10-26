@@ -59,8 +59,9 @@ class ServiceClient:
         client = cls(loop, thread)
         try:
             found = client._submit(client._attach(bus_address)).result(CONNECT_TIMEOUT)
-        except (DBusError, OSError, TimeoutError, ValueError) as exc:
-            log.debug("Sin servicio en el bus: %s", exc)
+        except Exception as exc:
+            # Incluye un servicio de una versión anterior sin DatabasePath (AttributeError).
+            log.info("Sin servicio compatible en el bus (%s); se trabaja en local", exc)
             found = None
         if found is None:
             client.close()
