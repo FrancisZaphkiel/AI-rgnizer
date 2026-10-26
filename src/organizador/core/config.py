@@ -55,12 +55,32 @@ class DuplicateSettings:
 
 
 @dataclass(slots=True)
+class LearningSettings:
+    # Clase = carpeta destino truncada a esta profundidad bajo su raíz indexada.
+    max_depth: int = 2
+    # Carpetas con menos ejemplos se descartan: no se puede aprender de ellas.
+    min_examples: int = 5
+    # Límite de ejemplos por carpeta para que una muy grande no domine.
+    max_examples_per_class: int = 2000
+    # Por debajo de esta probabilidad calibrada no se sugiere destino («sin clasificar»).
+    abstain_below: float = 0.5
+    # Regla «token → carpeta»: soporte mínimo y fracción mínima de ejemplos en esa carpeta.
+    rule_min_support: int = 10
+    rule_min_purity: float = 0.9
+    # Peso de cada corrección del usuario frente a un archivo ya organizado.
+    feedback_weight: float = 5.0
+    # Versiones del modelo que se conservan para poder revertir.
+    keep_models: int = 5
+
+
+@dataclass(slots=True)
 class Settings:
     indexed_dirs: list[Path] = field(default_factory=list)
     watched_dirs: list[Path] = field(default_factory=lambda: [downloads_dir()])
     scan: ScanSettings = field(default_factory=ScanSettings)
     actions: ActionSettings = field(default_factory=ActionSettings)
     duplicates: DuplicateSettings = field(default_factory=DuplicateSettings)
+    learning: LearningSettings = field(default_factory=LearningSettings)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -77,6 +97,7 @@ class Settings:
             scan=ScanSettings(**data.get("scan", {})),
             actions=ActionSettings(**data.get("actions", {})),
             duplicates=DuplicateSettings(**data.get("duplicates", {})),
+            learning=LearningSettings(**data.get("learning", {})),
         )
 
 

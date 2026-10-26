@@ -23,6 +23,8 @@ dependencies = [
     "pypdf>=5.1",
     "mutagen>=1.47",
     "python-magic>=0.4.27",
+    "scikit-learn>=1.6",
+    "joblib>=1.4",
 ]
 
 [project.scripts]
@@ -82,7 +84,7 @@ packages = ["organizador"]
 warn_unreachable = true
 
 [[tool.mypy.overrides]]
-module = ["blake3.*"]
+module = ["blake3.*", "sklearn.*", "scipy.*", "joblib.*"]
 ignore_missing_imports = true
 
 # --- Pruebas -----------------------------------------------------------------
