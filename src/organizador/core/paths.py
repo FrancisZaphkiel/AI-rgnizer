@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -102,3 +103,31 @@ class AppPaths:
         """Crea los directorios con permisos privados (0700)."""
         for directory in (self.config_dir, self.data_dir, self.state_dir, self.cache_dir):
             directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+
+class FolderSet:
+    """«¿Está dentro de alguna de estas carpetas?» comparando texto, sin ``pathlib``.
+
+    ``Path.is_relative_to`` cuesta ~0,25 ms: con 16 000 carpetas indexadas y una veintena
+    de exclusiones, el servicio tardaba 100 s en arrancar. Las rutas deben venir ya
+    absolutas y normalizadas (como las guarda el índice).
+    """
+
+    __slots__ = ("_everything", "_exact", "_prefixes")
+
+    def __init__(self, folders: Iterable[str | os.PathLike[str]]) -> None:
+        texts = [os.fspath(f).rstrip("/") for f in folders]
+        self._everything = "" in texts  # la raíz «/» lo contiene todo
+        self._exact = frozenset(texts)
+        self._prefixes = tuple(t + "/" for t in texts)
+
+    def __contains__(self, path: object) -> bool:
+        if not isinstance(path, (str, os.PathLike)):
+            return False
+        text = os.fspath(path)
+        if not isinstance(text, str):
+            return False
+        return self._everything or text in self._exact or text.startswith(self._prefixes)
+
+    def __bool__(self) -> bool:
+        return bool(self._exact)

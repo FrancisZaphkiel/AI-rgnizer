@@ -14,6 +14,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 
+from organizador.core.paths import FolderSet
 from organizador.features.name import analyse_name
 from organizador.storage import Database
 from organizador.storage.index import under_roots
@@ -47,14 +48,11 @@ class FolderNames:
     ) -> FolderNames:
         """Carpetas indexadas bajo ``roots``, salvo las raíces y lo que cuelga de ``exclude``."""
         resolved = [r.expanduser().resolve() for r in roots]
-        skipped = [e.expanduser().resolve() for e in exclude]
+        top = {str(r) for r in resolved}
+        skipped = FolderSet(e.expanduser().resolve() for e in exclude)
         with db.session() as session:
             dirs = session.scalars(select(Directory.path).where(under_roots(resolved))).all()
-        return cls(
-            d
-            for d in dirs
-            if Path(d) not in resolved and not any(Path(d).is_relative_to(e) for e in skipped)
-        )
+        return cls(d for d in dirs if d not in top and d not in skipped)
 
     def match(self, file_words: Iterable[str]) -> FolderMatch | None:
         present = set(file_words)

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import errno
 import os
+import pwd
 import stat
 from dataclasses import dataclass
 from datetime import datetime
@@ -134,9 +135,26 @@ def _try_trash_into(path: Path, trash: TrashDir) -> TrashedItem:
     raise TrashError(errno.EEXIST, "No se encontró un nombre libre en la papelera", str(path))
 
 
+def _check_removable(path: Path) -> None:
+    """Sin permiso para escribir en la carpeta no hay papelera que valga: se dice claro."""
+    parent = path.parent
+    if os.access(parent, os.W_OK | os.X_OK):
+        return
+    try:
+        owner = pwd.getpwuid(parent.stat().st_uid).pw_name
+    except (OSError, KeyError):
+        owner = "otro usuario"
+    raise TrashError(
+        errno.EACCES,
+        f"No tienes permiso para quitar archivos de {parent} (pertenece a {owner})",
+        str(path),
+    )
+
+
 def move_to_trash(path: Path) -> TrashedItem:
     """Envía ``path`` a la papelera sin copiar entre dispositivos."""
     path = path.absolute()
+    _check_removable(path)
     last_error: OSError | None = None
     for trash in candidate_trash_dirs(path):
         try:

@@ -46,6 +46,8 @@ BusName={BUS_NAME}
 ExecStart={shlex.join(command)}
 Restart=on-failure
 RestartSec=5
+# Arranca leyendo el índice: con muchas carpetas, los 15 s por defecto pueden no bastar.
+TimeoutStartSec=90
 Environment=PYTHONUNBUFFERED=1
 # El modelo es pequeño: un hilo de BLAS basta y evita decenas de hilos ociosos.
 Environment=OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1

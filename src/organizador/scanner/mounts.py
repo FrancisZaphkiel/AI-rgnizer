@@ -72,6 +72,29 @@ def mounts(mountinfo: Path = MOUNTINFO) -> list[MountEntry]:
     return out
 
 
+# Donde udisks (Dolphin, el gestor de dispositivos de KDE) monta discos externos, USB,
+# tarjetas y particiones de otros sistemas; /mnt, los que monta el usuario a mano.
+USER_MOUNT_ROOTS = (Path("/run/media"), Path("/media"), Path("/mnt"))
+
+
+def user_mounts(mountinfo: Path = MOUNTINFO) -> list[MountEntry]:
+    """Unidades que el usuario reconoce como «otro disco»: externas, montadas a mano o de red.
+
+    Deja fuera las del sistema (``/``, ``/home``, ``/boot``, subvolúmenes de Btrfs…).
+    """
+    seen: set[Path] = set()
+    out: list[MountEntry] = []
+    for entry in mounts(mountinfo):
+        point = entry.point
+        under_user_root = any(
+            point != root and point.is_relative_to(root) for root in USER_MOUNT_ROOTS
+        )
+        if (under_user_root or entry.is_network) and point not in seen:
+            seen.add(point)
+            out.append(entry)
+    return sorted(out, key=lambda e: str(e.point))
+
+
 def filesystem_of(path: Path, mountinfo: Path = MOUNTINFO) -> MountEntry | None:
     """Montaje que contiene ``path`` (el punto de montaje más largo que es su prefijo)."""
     path = path.absolute()

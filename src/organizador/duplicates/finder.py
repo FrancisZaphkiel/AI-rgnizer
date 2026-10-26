@@ -19,6 +19,8 @@ como espacio recuperable si se eliminan todos sus enlaces.
 from __future__ import annotations
 
 import logging
+import os
+import stat
 import threading
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
@@ -26,7 +28,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, not_, select
 from sqlalchemy.orm import Session
 
 from organizador.core.config import DuplicateSettings
@@ -44,6 +46,25 @@ InodeKey = tuple[int, int]  # (dispositivo, inode)
 HashKind = Literal["partial", "full"]
 
 
+def can_remove(path: Path) -> bool:
+    """¿Puede el usuario quitar ``path`` de su carpeta (moverlo a la papelera)?
+
+    Hace falta escribir en la carpeta; con el bit *sticky* (como ``/tmp``), además, ser
+    dueño del archivo o de la carpeta.
+    """
+    parent = path.parent
+    if not os.access(parent, os.W_OK | os.X_OK):
+        return False
+    try:
+        st = parent.stat()
+        if st.st_mode & stat.S_ISVTX:
+            uid = os.geteuid()
+            return uid in {st.st_uid, path.lstat().st_uid}
+    except OSError:
+        return False
+    return True
+
+
 @dataclass(frozen=True, slots=True)
 class DuplicateFile:
     path: Path
@@ -56,6 +77,8 @@ class DuplicateFile:
     birth_ns: int | None = None
     # Bytes que ocupa el archivo sin contar extents compartidos (reflinks, instantáneas).
     exclusive_bytes: int = 0
+    # Se puede quitar de su carpeta (p. ej. no si la carpeta es de root).
+    removable: bool = True
 
     @property
     def inode_key(self) -> InodeKey:
@@ -87,8 +110,8 @@ class DuplicateGroup:
 
     @property
     def redundant(self) -> tuple[DuplicateFile, ...]:
-        """Copias propuestas para la papelera."""
-        return tuple(f for f in self.files if f.inode_key != self.keep.inode_key)
+        """Copias propuestas para la papelera (las que no se pueden quitar, nunca)."""
+        return tuple(f for f in self.files if f.inode_key != self.keep.inode_key and f.removable)
 
     @property
     def recoverable_bytes(self) -> int:
@@ -193,17 +216,24 @@ class DuplicateFinder:
         *,
         cancel: threading.Event | None = None,
         progress: ProgressCallback | None = None,
+        exclude: Sequence[Path] = (),
     ) -> DuplicateReport:
-        """Busca duplicados entre los archivos indexados bajo ``roots`` (solo lectura)."""
+        """Busca duplicados entre los archivos indexados bajo ``roots`` (solo lectura).
+
+        ``exclude``: carpetas que no se miran (p. ej. proyectos de software, donde quitar
+        un archivo repetido rompe el proyecto).
+        """
         resolved = [r.expanduser().resolve() for r in roots]
         report = DuplicateReport()
         with self._db.new_session() as session:
             job = _FindJob(self._settings, session, report.stats, cancel, progress)
-            confirmed = job.run(resolved)
+            confirmed = job.run(resolved, [Path(e) for e in exclude])
             job.writer.flush()
             session.commit()
         if not report.stats.cancelled:
-            report.groups = [self._build_group(h, members) for h, members in confirmed.items()]
+            built = (self._build_group(h, members) for h, members in confirmed.items())
+            # Si ninguna copia se puede quitar, no hay nada que ofrecer.
+            report.groups = [g for g in built if g.redundant]
             report.groups.sort(key=lambda g: (-g.recoverable_bytes, -g.size, g.content_hash))
         log.info("Búsqueda de duplicados en %s: %s", resolved, report.stats)
         return report
@@ -228,9 +258,14 @@ class DuplicateFinder:
                     nlink=c.nlink,
                     birth_ns=birth_or_none(c.path),
                     exclusive_bytes=usage[c.inode_key],
+                    removable=can_remove(c.path),
                 )
             )
-        choice = self._policy.choose(files)
+        protected = [f for f in files if not f.removable]
+        # Una copia que no se puede quitar se queda de todas formas: es la que se conserva.
+        choice = self._policy.choose(protected or files)
+        if protected and len(protected) < len(files):
+            choice = replace(choice, reason="no tienes permiso para quitarla")
         return DuplicateGroup(
             content_hash=content_hash,
             size=members[0].size,
@@ -256,8 +291,10 @@ class _FindJob:
         self.progress = progress
         self.writer = IndexWriter(session)
 
-    def run(self, roots: Sequence[Path]) -> dict[str, list[_Candidate]]:
-        by_size = self.load_candidates(roots)
+    def run(
+        self, roots: Sequence[Path], exclude: Sequence[Path] = ()
+    ) -> dict[str, list[_Candidate]]:
+        by_size = self.load_candidates(roots, exclude)
         self.stats.candidates = sum(len(g) for g in by_size.values())
 
         by_partial: dict[tuple[int, str], list[_Candidate]] = defaultdict(list)
@@ -287,8 +324,10 @@ class _FindJob:
 
     # --- etapa 1: tamaño -------------------------------------------------------
 
-    def load_candidates(self, roots: Sequence[Path]) -> dict[int, list[_Candidate]]:
-        in_roots = under_roots(roots)
+    def load_candidates(
+        self, roots: Sequence[Path], exclude: Sequence[Path] = ()
+    ) -> dict[int, list[_Candidate]]:
+        in_roots = and_(under_roots(roots), not_(under_roots(exclude)))
         repeated_sizes = (
             select(File.size)
             .join(Directory)

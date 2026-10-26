@@ -5,6 +5,58 @@ según [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+## [0.3.0] — 2026-10-26
+
+Fase 5: interfaz gráfica PySide6 con bandeja, y la CLI delegando en el servicio.
+
+### Añadido
+
+- **Interfaz gráfica** (PySide6, extra opcional `gui`): `organizador gui [--hidden]` u
+  `organizador-gui`. Secciones Panel, Descargas, Duplicados (miniaturas, ★ copia a
+  conservar, papelera con confirmación), Patrones (editables), Historial (deshacer) y
+  Ajustes (carpetas, modo, umbral, arranque con la sesión, exportar y borrar datos).
+  Icono de bandeja con contador de pendientes. Usa el servicio por D-Bus si está en
+  marcha; si no, trabaja en local. Todo lo lento va en segundo plano.
+- GUI: **Abrir** (y doble clic) en Descargas, Duplicados e Historial abre el archivo con
+  la aplicación predeterminada del sistema, para comprobar una sugerencia antes de
+  aceptarla. En Descargas el doble clic ya no acepta.
+- GUI: los botones «Añadir…» y «Mover a…» muestran las **unidades montadas** (discos
+  externos, USB, particiones de otros sistemas, red) con su sistema de archivos y espacio
+  libre; al elegir una, el selector se abre dentro de ella.
+- **Carpetas propias para buscar duplicados** (`[duplicates] dirs`), editables en la
+  sección Duplicados; si está vacía se usan las carpetas organizadas. Antes eran siempre
+  las mismas que las de aprendizaje.
+- **La CLI delega en el servicio** cuando está en marcha sobre la misma base de datos
+  (único escritor): `mv`, `rename`, `trash`, `undo`, `accept`, `ignore`, `teach`,
+  `review --move` y las papeleras de `dupes`/`similar`. Opción global `--local`.
+- API D-Bus v1 (añadidos compatibles): `Move`, `Rename`, `Trash`, `Teach` y la propiedad
+  `DatabasePath`.
+
+### Corregido
+
+- Servicio: no arrancaba con un índice grande (16 000 carpetas): calcular las carpetas
+  destino tardaba ~100 s por comparar rutas con `Path.is_relative_to` y systemd lo mataba
+  a los 15 s. Ahora se comparan como texto (`FolderSet`): 1 s. La unidad admite 90 s de
+  arranque (`TimeoutStartSec`).
+
+- Duplicados: las copias en carpetas sin permiso de escritura (p. ej. de root, clonadas
+  con sudo) ya no se proponen para la papelera; si hay alguna, es la que se conserva, y
+  un grupo sin nada que quitar no se muestra. La papelera explica «No tienes permiso para
+  quitar archivos de … (pertenece a root)» en vez de un error sobre `/home/.Trash-1000`.
+- Duplicados: se saltan los **proyectos de software** (`.git`, `pyproject.toml`,
+  `package.json`…), donde quitar un archivo repetido rompe el proyecto
+  (`[duplicates] skip_projects = true`).
+
+- GUI: la ventana se congelaba (más de 15 s con ~450 descargas pendientes) al rellenar
+  tablas visibles con columnas autoajustables; ahora se miden una vez por relleno.
+- GUI: los avisos de cambio se agrupan, solo se recarga la vista visible, las consultas
+  no se solapan y lecturas, operaciones y trabajos largos usan hilos separados.
+- GUI: caída ocasional al destruirse en un hilo de trabajo el objeto que entregaba el
+  resultado de una tarea.
+- GUI: «Aprender de mis carpetas» entrena en otro proceso; el Panel solo lee el modelo
+  activo (antes cargaba todas las versiones).
+- Servicio: aceptar una sugerencia ya no relee el modelo de disco cada vez.
+
 ## [0.2.0] — 2026-10-26
 
 Fases 3 y 4: aprendizaje de costumbres y vigilancia de Descargas como servicio de usuario

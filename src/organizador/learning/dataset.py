@@ -113,9 +113,11 @@ def find_project_dirs(db: Database, roots: Sequence[Path]) -> list[str]:
         if d not in marked and any((Path(d) / m).exists() for m in PROJECT_DIR_MARKERS):
             marked.add(d)
     outermost: list[str] = []
+    prefixes: tuple[str, ...] = ()
     for d in sorted(marked):  # el orden alfabético deja cada padre antes que sus hijos
-        if not any(Path(d).is_relative_to(p) for p in outermost):
+        if not d.startswith(prefixes):
             outermost.append(d)
+            prefixes = (*prefixes, d.rstrip("/") + "/")
     return outermost
 
 

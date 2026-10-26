@@ -22,7 +22,7 @@ from dbus_fast import BusType, Variant
 from dbus_fast.aio import MessageBus
 from dbus_fast.constants import NameFlag, RequestNameReply
 
-from organizador.actions import ActionError, ActionService
+from organizador.actions import ActionError, ActionResult, ActionService
 from organizador.actions.errors import ConcurrentOperationError
 from organizador.actions.locks import process_lock
 from organizador.app import (
@@ -34,6 +34,7 @@ from organizador.app import (
     ignore_suggestion,
     undo_action,
 )
+from organizador.backend import LocalBackend
 from organizador.downloads import DownloadMonitor, Outcome, SuggestionQueue
 from organizador.downloads.queue import alternatives_of, available
 from organizador.service.api import OrganizadorInterface, error, variants
@@ -70,6 +71,17 @@ def suggestion_dict(row: DownloadSuggestion) -> dict[str, Variant]:
     )
 
 
+def result_dict(result: ActionResult, learned: str | None = None) -> dict[str, Variant]:
+    return variants(
+        {
+            "action_id": result.action_id,
+            "source": str(result.source),
+            "destination": str(result.destination),
+            "learned": learned or "",
+        }
+    )
+
+
 def action_dict(entry: ActionJournal) -> dict[str, Variant]:
     return variants(
         {
@@ -100,8 +112,10 @@ class Daemon:
         self._writer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="escritor")
         self._queue = SuggestionQueue(ctx.db)
         self.mode = ctx.settings.watch.mode
+        self.database_path = ctx.paths.database_file
         self.watched_dirs = [d.expanduser() for d in ctx.settings.watched_dirs]
         self._actions: ActionService | None = None
+        self._local: LocalBackend | None = None
         self._monitor: DownloadMonitor | None = None
         self._iface = OrganizadorInterface(self)
         self._notifier: Notifier | None = None
@@ -148,8 +162,8 @@ class Daemon:
             self._writer.shutdown(wait=True)
 
     def _start(self) -> None:
-        self._actions = self._ctx.actions(origin="servicio")
-        actions = self._actions
+        self._local = LocalBackend(self._ctx, origin="servicio")
+        actions = self._actions = self._local.actions
 
         def mover(source: Path, folder: Path) -> str:
             return actions.move(source, folder).action_id
@@ -226,6 +240,51 @@ class Daemon:
         except ActionError as exc:
             raise _dbus_error(exc) from exc
 
+    async def _op[T](self, fn: Callable[..., T], *args: Any) -> T:
+        """Operación del backend en el hilo escritor, con los errores traducidos a D-Bus."""
+        try:
+            return await self._write(fn, *args)
+        except (SuggestionError, ActionError, ValueError, OSError) as exc:
+            raise _dbus_error(exc) from exc
+
+    def _backend(self) -> LocalBackend:
+        assert self._local is not None
+        return self._local
+
+    async def move(self, source: str, folder: str, learn: bool) -> dict[str, Variant]:
+        result, learned = await self._op(
+            partial(self._backend().move, learn=learn), Path(source), Path(folder)
+        )
+        return result_dict(result, learned)
+
+    async def rename(self, source: str, new_name: str) -> dict[str, Variant]:
+        return result_dict(await self._op(self._backend().rename, Path(source), new_name))
+
+    async def trash(self, source: str, expected_hash: str) -> dict[str, Variant]:
+        result = await self._op(
+            partial(self._backend().trash, expected_hash=expected_hash or None), Path(source)
+        )
+        return result_dict(result)
+
+    async def teach(self, path: str, folder: str) -> str:
+        return await self._op(self._backend().teach, Path(path), Path(folder))
+
+    async def set_pattern(self, folder: str, template: str, enabled: bool) -> None:
+        await self._op(self._backend().set_pattern, folder, template, enabled)
+
+    async def reload_settings(self) -> None:
+        """Relee ``config.toml`` y reinicia la vigilancia con las carpetas nuevas."""
+
+        def reload() -> None:
+            self._close()
+            self._backend().reload_settings()
+            self.mode = self._ctx.settings.watch.mode
+            self.watched_dirs = [d.expanduser() for d in self._ctx.settings.watched_dirs]
+            self._start()
+
+        await self._write(reload)
+        log.info("Configuración recargada (%s): %s", self.mode, self.watched_dirs)
+
     async def history(self, limit: int) -> list[dict[str, Variant]]:
         def read() -> list[dict[str, Variant]]:
             assert self._actions is not None
@@ -268,6 +327,6 @@ class Daemon:
 def _dbus_error(exc: Exception) -> Exception:
     if isinstance(exc, SuggestionMissingError):
         return error(ERROR_NOT_FOUND, str(exc))
-    if isinstance(exc, SuggestionError):
+    if isinstance(exc, SuggestionError | ValueError):
         return error(ERROR_INVALID, str(exc))
     return error(ERROR_ACTION, str(exc))

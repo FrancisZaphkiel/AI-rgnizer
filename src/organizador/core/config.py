@@ -52,6 +52,11 @@ class DuplicateSettings:
     # Calibrado: redimensionar o recomprimir da ≤ 2; fotos distintas, ≥ 20; capturas de
     # pantalla distintas de una misma aplicación, desde 0 (por eso son solo candidatos).
     image_max_distance: int = 4
+    # Dónde buscar duplicados; vacía: en las carpetas organizadas (``indexed_dirs``).
+    dirs: list[str] = field(default_factory=list)
+    # Saltar proyectos de software (.git, pyproject.toml, package.json…): quitar un
+    # archivo repetido de un repositorio lo rompe.
+    skip_projects: bool = True
 
 
 def default_type_destinations() -> dict[str, str]:
@@ -130,6 +135,11 @@ class Settings:
     learning: LearningSettings = field(default_factory=LearningSettings)
     watch: WatchSettings = field(default_factory=WatchSettings)
 
+    def duplicate_roots(self) -> list[Path]:
+        """Carpetas donde buscar duplicados: las elegidas o, si no hay, las organizadas."""
+        chosen = [Path(d) for d in self.duplicates.dirs]
+        return [p.expanduser() for p in (chosen or self.indexed_dirs)]
+
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["indexed_dirs"] = [str(p) for p in self.indexed_dirs]
@@ -170,7 +180,8 @@ def save_settings(paths: AppPaths, settings: Settings) -> None:
 
 
 def set_config_value(paths: AppPaths, key: str, value: Any) -> None:
-    """Cambia una clave de primer nivel sin escribir el resto de valores por defecto.
+    """Cambia una clave (``"watched_dirs"``, ``"watch.mode"``…) sin escribir el resto de
+    valores por defecto.
 
     Los comentarios de ``config.toml`` se pierden (``tomli_w`` no los conserva).
     """
@@ -179,7 +190,11 @@ def set_config_value(paths: AppPaths, key: str, value: Any) -> None:
             data = tomllib.load(fh)
     except FileNotFoundError:
         data = {}
-    data[key] = value
+    *parents, last = key.split(".")
+    table = data
+    for part in parents:
+        table = table.setdefault(part, {})
+    table[last] = value
     Settings.from_dict(data)  # valida antes de escribir
     _write_toml(paths, data)
 

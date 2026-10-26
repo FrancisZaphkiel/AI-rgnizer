@@ -7,14 +7,15 @@ decide cómo mostrarlos.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import func, select
 
-from organizador.actions import ActionService
+from organizador.actions import ActionResult, ActionService
 from organizador.core.config import Settings, load_settings
 from organizador.core.paths import AppPaths
 from organizador.downloads import SuggestionNotFoundError, SuggestionQueue
@@ -23,12 +24,14 @@ from organizador.learning.dataset import build_dataset, find_project_dirs, label
 from organizador.learning.decide import decide
 from organizador.learning.folders import FolderNames
 from organizador.learning.model import DestinationModel, NotEnoughDataError, Prediction
+from organizador.learning.patterns import FolderPattern, NamePattern, dominant_pattern
 from organizador.learning.store import IncompatibleModelError, ModelNotFoundError, ModelStore
 from organizador.storage import Database
 from organizador.storage.models import (
     ActionJournal,
     DownloadSuggestion,
     Feedback,
+    NamingPattern,
     SuggestionState,
 )
 
@@ -42,6 +45,8 @@ class AppContext:
     db: Database
     # Cómo avisar de las acciones interrumpidas que se recuperan (la CLI usa print).
     report: Callable[[str], None] = log.warning
+    # Modelo activo ya cargado, por (archivo, mtime): aceptar una sugerencia no lo relee.
+    model_cache: dict[tuple[str, int], DestinationModel] = field(default_factory=dict)
 
     @classmethod
     def open(cls) -> AppContext:
@@ -66,13 +71,43 @@ class AppContext:
 # --- aprendizaje ------------------------------------------------------------------------
 
 
+def duplicate_exclude(ctx: AppContext, roots: Sequence[Path]) -> list[Path]:
+    """Carpetas que la búsqueda de duplicados salta: los proyectos de software."""
+    if not ctx.settings.duplicates.skip_projects or not roots:
+        return []
+    return [Path(p) for p in find_project_dirs(ctx.db, roots)]
+
+
 def load_model(ctx: AppContext) -> DestinationModel | None:
     """Modelo activo; sin él solo se usan las reglas de config.toml y los destinos por tipo."""
+    key = _model_key(ctx)
+    if key is not None and key in ctx.model_cache:
+        return ctx.model_cache[key]
     try:
-        return ctx.models().load()
+        model = ctx.models().load()
     except (ModelNotFoundError, IncompatibleModelError) as exc:
         log.warning("%s; solo se usan tus reglas y los destinos por tipo", exc)
         return None
+    _remember_model(ctx, model)
+    return model
+
+
+def _model_key(ctx: AppContext) -> tuple[str, int] | None:
+    store = ctx.models()
+    version = store.current_version()
+    if version is None:
+        return None
+    path = store.path_of(version)
+    try:
+        return str(path), path.stat().st_mtime_ns
+    except OSError:
+        return None
+
+
+def _remember_model(ctx: AppContext, model: DestinationModel) -> None:
+    ctx.model_cache.clear()
+    if (key := _model_key(ctx)) is not None:
+        ctx.model_cache[key] = model
 
 
 def learning_exclude(ctx: AppContext) -> list[Path]:
@@ -135,7 +170,9 @@ def record_choice(
             select(func.count()).select_from(Feedback).where(Feedback.chosen == label)
         )
     if model is not None and model.learn(features, label):
-        return f"aprendido: {path.name} → {label} (modelo {ctx.models().save(model)})"
+        saved = ctx.models().save(model)
+        _remember_model(ctx, model)  # la versión nueva es este mismo objeto
+        return f"aprendido: {path.name} → {label} (modelo {saved})"
     if (pending or 0) >= learning.retrain_after and (version := retrain_from_index(ctx)):
         return f"{label}: {pending} archivos elegidos, reentrenado (modelo {version})"
     return (
@@ -160,6 +197,94 @@ def classifier(
         return decide(features, loaded["model"], ctx.settings.learning, loaded["folders"])
 
     return classify
+
+
+def move_and_learn(
+    ctx: AppContext,
+    actions: ActionService,
+    source: Path,
+    folder: Path,
+    *,
+    learn: bool = True,
+    load: Callable[[AppContext], DestinationModel | None] = load_model,
+) -> tuple[ActionResult, str | None]:
+    """Mueve ``source`` a ``folder`` (creándola) y, si ``learn``, aprende la elección."""
+    folder = folder.expanduser()
+    folder.mkdir(parents=True, exist_ok=True)
+    # Características antes de mover: describen el archivo tal como llegó.
+    features = extract_features(source) if learn and source.is_file() else None
+    result = actions.move(source, folder)
+    if features is None:
+        return result, None
+    learned = record_choice(
+        ctx, result.destination, result.destination.parent.resolve(), features, load
+    )
+    return result, learned
+
+
+def teach(
+    ctx: AppContext,
+    path: Path,
+    folder: Path,
+    load: Callable[[AppContext], DestinationModel | None] = load_model,
+) -> str:
+    """«``path`` va en ``folder``» sin mover nada. Lanza ``ValueError`` si no existen."""
+    path, folder = path.expanduser().resolve(), folder.expanduser().resolve()
+    if not path.is_file() or not folder.is_dir():
+        raise ValueError("indica un archivo existente y una carpeta existente")
+    return record_choice(ctx, path, folder, extract_features(path), load)
+
+
+# --- patrones de nombres ----------------------------------------------------------------
+
+_PLACEHOLDER = re.compile(r"\{(fecha:[^{}]+|texto|n|id)\}")
+
+
+def folder_pattern(ctx: AppContext, folder: str, names: Sequence[str]) -> FolderPattern | None:
+    """Patrón de ``folder``: el que editó el usuario manda sobre el inferido."""
+    found = dominant_pattern(names)
+    with ctx.db.session() as s:
+        edited = s.scalar(
+            select(NamingPattern).where(
+                NamingPattern.directory == folder, NamingPattern.user_edited.is_(True)
+            )
+        )
+    if edited is None:
+        return found
+    if not edited.enabled:
+        return None
+    case = found.pattern.case if found else "—"
+    sep = found.pattern.text_separator if found else None
+    support, total = (found.support, found.total) if found else (0, len(names))
+    examples = found.examples if found else tuple(sorted(names)[:3])
+    return FolderPattern(NamePattern(edited.template, case, sep), support, total, examples)
+
+
+def set_pattern(ctx: AppContext, folder: str, template: str, enabled: bool) -> None:
+    """Guarda la plantilla del usuario para ``folder`` (o la desactiva con ``enabled=False``).
+
+    Lanza ``ValueError`` si la plantilla no tiene ningún campo (``{fecha:…}``, ``{texto}``,
+    ``{n}``) o tiene llaves sin cerrar.
+    """
+    template = template.strip()
+    stripped = _PLACEHOLDER.sub("", template).replace("{{", "").replace("}}", "")
+    if enabled and (not _PLACEHOLDER.search(template) or "{" in stripped or "}" in stripped):
+        raise ValueError(
+            f"Plantilla no válida: {template!r} (usa {{fecha:AAAA-MM-DD}}, {{texto}}, {{n}})"
+        )
+    with ctx.db.session() as s:
+        for row in s.scalars(select(NamingPattern).where(NamingPattern.directory == folder)):
+            s.delete(row)
+        s.flush()
+        s.add(
+            NamingPattern(
+                directory=folder, template=template, enabled=enabled, user_edited=True, support=0
+            )
+        )
+
+
+def reload_settings(ctx: AppContext) -> None:
+    ctx.settings = load_settings(ctx.paths)
 
 
 # --- sugerencias de las carpetas vigiladas ------------------------------------------------

@@ -71,3 +71,15 @@ def test_invalid_watch_mode_falls_back_to_defaults(isolated_home: Path) -> None:
     paths.ensure()
     paths.config_file.write_text('[watch]\nmode = "siempre"\n')
     assert load_settings(paths).watch.mode == "suggest"
+
+
+def test_duplicate_roots_default_to_organized_folders() -> None:
+    from organizador.core.config import DuplicateSettings, Settings
+
+    organized = Settings(indexed_dirs=[Path("/datos/Documentos")])
+    assert organized.duplicate_roots() == [Path("/datos/Documentos")]
+    chosen = Settings(
+        indexed_dirs=[Path("/datos/Documentos")],
+        duplicates=DuplicateSettings(dirs=["/run/media/ana/disco"]),
+    )
+    assert chosen.duplicate_roots() == [Path("/run/media/ana/disco")]

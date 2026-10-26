@@ -294,13 +294,13 @@ las que están mal y conviene repetir la evaluación tras limpiarlas.
 - Tema del sistema, escalado HiDPI, Wayland.
 
 **Pruebas de cierre**
-- [ ] `pytest-qt`: cada vista carga con datos simulados.
-- [ ] Flujo GUI: aceptar sugerencia → archivo movido → aparece en historial → deshacer lo restaura.
-- [ ] Flujo GUI: grupo de duplicados → enviar a papelera → archivos en papelera, no borrados.
-- [ ] El diálogo de confirmación aparece siempre antes de enviar a papelera.
-- [ ] La UI no se bloquea durante un escaneo largo (test con temporizador).
-- [ ] "Borrar datos aprendidos" elimina BD y modelo.
-- [ ] Prueba manual en CachyOS (KDE Wayland): tema oscuro, bandeja, HiDPI.
+- [x] `pytest-qt`: cada vista carga con datos simulados.
+- [x] Flujo GUI: aceptar sugerencia → archivo movido → aparece en historial → deshacer lo restaura.
+- [x] Flujo GUI: grupo de duplicados → enviar a papelera → archivos en papelera, no borrados.
+- [x] El diálogo de confirmación aparece siempre antes de enviar a papelera.
+- [x] La UI no se bloquea durante un escaneo largo (test con temporizador).
+- [x] "Borrar datos aprendidos" elimina BD y modelo.
+- [x] Prueba manual en CachyOS (KDE Wayland): tema oscuro, bandeja, HiDPI.
 
 **Release `v0.3.0`**
 

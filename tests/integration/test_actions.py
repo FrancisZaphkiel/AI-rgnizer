@@ -478,3 +478,19 @@ def test_undo_refuses_changed_content_despite_tolerance(
     os.utime(result.destination, ns=(st.st_atime_ns, st.st_mtime_ns))
     with pytest.raises(SourceChangedError):
         service.undo(result.action_id)
+
+
+def test_trash_without_folder_permission_says_so(tmp_path: Path) -> None:
+    from organizador.actions.trash import TrashError, move_to_trash
+
+    folder = tmp_path / "de_root"
+    folder.mkdir()
+    victim = folder / "add-sendgrid.png"
+    victim.write_bytes(b"x")
+    folder.chmod(0o555)
+    try:
+        with pytest.raises(TrashError, match="No tienes permiso para quitar archivos de"):
+            move_to_trash(victim)
+        assert victim.exists()
+    finally:
+        folder.chmod(0o755)

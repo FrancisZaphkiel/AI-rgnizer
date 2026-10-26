@@ -452,3 +452,53 @@ def test_index_writer_skips_rows_whose_signature_changed(db: Database, root: Pat
     with db.session() as s:
         hashes = dict(s.execute(select(File.name, File.content_hash)).all())
     assert hashes == {"a.bin": "vigente", "b.bin": None}
+
+
+@pytest.fixture
+def readonly(root: Path) -> Iterator[Path]:
+    """Carpeta sin permiso de escritura, como las clonadas con sudo (de root)."""
+    folder = root / "ajena"
+    folder.mkdir()
+    yield folder
+    folder.chmod(0o755)
+
+
+def test_copy_in_folder_without_permission_is_kept_not_proposed(
+    db: Database, root: Path, readonly: Path
+) -> None:
+    content = b"logo" * 3000
+    _write(root / "Documentos" / "logo.png", content)
+    _write(readonly / "logo.png", content)
+    readonly.chmod(0o555)
+    [group] = _find(db, root).groups
+    assert group.keep.path == readonly / "logo.png"  # se queda igualmente: se conserva esa
+    assert group.keep_reason == "no tienes permiso para quitarla"
+    assert [f.path for f in group.redundant] == [root / "Documentos" / "logo.png"]
+
+
+def test_group_with_nothing_removable_is_not_offered(
+    db: Database, root: Path, readonly: Path
+) -> None:
+    content = b"icono" * 3000
+    _write(readonly / "a" / "safari.svg", content)
+    _write(readonly / "b" / "safari.svg", content)
+    for sub in ("a", "b"):
+        (readonly / sub).chmod(0o555)
+    try:
+        assert _find(db, root).groups == []
+    finally:
+        for sub in ("a", "b"):
+            (readonly / sub).chmod(0o755)
+
+
+def test_software_projects_can_be_excluded(db: Database, root: Path) -> None:
+    content = b"img" * 3000
+    repo = root / "repos" / "website"
+    (repo / ".git").mkdir(parents=True)
+    _write(repo / "static" / "a.png", content)
+    _write(repo / "public" / "a.png", content)
+    Scanner(db, ScanSettings(), mounts=()).scan(root)
+    policy = KeepPolicy(organized_dirs=[root], watched_dirs=[])
+    finder = DuplicateFinder(db, DuplicateSettings(partial_bytes=PARTIAL), policy)
+    assert len(finder.find([root]).groups) == 1
+    assert finder.find([root], exclude=[repo]).groups == []
