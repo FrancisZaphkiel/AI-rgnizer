@@ -28,10 +28,10 @@ from sqlalchemy.orm import Session
 
 from organizador.core.config import DuplicateSettings
 from organizador.duplicates import hashing
-from organizador.duplicates.finder import birth_or_none, under_roots
-from organizador.duplicates.index import IndexWriter
+from organizador.duplicates.finder import birth_or_none
 from organizador.duplicates.keep import KeepChoice, KeepPolicy
 from organizador.storage import Database
+from organizador.storage.index import FileSignature, IndexWriter, signature, under_roots
 from organizador.storage.models import IMAGE_UNREADABLE, Directory, File
 
 log = logging.getLogger(__name__)
@@ -186,7 +186,7 @@ ProgressCallback = Callable[[SimilarStats], None]
 class _Image:
     file_id: int
     path: Path
-    signature: hashing.FileSignature
+    signature: FileSignature
     perceptual_hash: str | None
     width: int | None
     height: int | None
@@ -323,7 +323,7 @@ class _SimilarJob:
 
     def unchanged(self, image: _Image) -> bool:
         try:
-            current = hashing.signature(image.path.lstat())
+            current = signature(image.path.lstat())
         except OSError:
             self.stats.stale += 1
             return False

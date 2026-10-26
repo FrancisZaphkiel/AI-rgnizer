@@ -20,6 +20,9 @@ dependencies = [
     "pillow>=11",
     "imagehash>=4.3",
     "rapidfuzz>=3.10",
+    "pypdf>=5.1",
+    "mutagen>=1.47",
+    "python-magic>=0.4.27",
 ]
 
 [project.scripts]

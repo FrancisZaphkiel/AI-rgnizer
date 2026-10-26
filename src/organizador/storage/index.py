@@ -1,18 +1,39 @@
-"""Escritura de resultados (hashes, metadatos de imagen) en el índice del escáner."""
+"""Utilidades comunes sobre el índice del escáner: firma de archivo, filtro por raíces y
+escritura por lotes de valores derivados (hashes, metadatos, características)."""
 
 from __future__ import annotations
 
+import os
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any, cast
 
-from sqlalchemy import Table, and_, bindparam, update
+from sqlalchemy import ColumnElement, Table, and_, bindparam, or_, update
 from sqlalchemy.orm import Session
 
-from organizador.duplicates.hashing import FileSignature
-from organizador.storage.models import File
+from organizador.storage.models import Directory, File
 
 FLUSH_EVERY_ROWS = 500
+
+# (tamaño, mtime_ns, ctime_ns, inode, dispositivo): si cambia, lo derivado del archivo ya no vale.
+FileSignature = tuple[int, int, int, int, int]
+
+
+def signature(st: os.stat_result) -> FileSignature:
+    """Misma firma que usa el escáner para decidir si un archivo cambió."""
+    return (st.st_size, st.st_mtime_ns, st.st_ctime_ns, st.st_ino, st.st_dev)
+
+
+def under_roots(roots: Sequence[Path]) -> ColumnElement[bool]:
+    """Condición SQL: la carpeta es una de ``roots`` o está dentro de alguna."""
+    clauses: list[ColumnElement[bool]] = []
+    for root in roots:
+        prefix = str(root).rstrip("/") + "/"
+        clauses.append(Directory.path == str(root))
+        clauses.append(Directory.path.startswith(prefix, autoescape=True))
+    return or_(*clauses)
+
 
 # Sobre la tabla (Core), sin la sincronización de sesión del ORM, que era el cuello de botella.
 _files = cast("Table", File.__table__)

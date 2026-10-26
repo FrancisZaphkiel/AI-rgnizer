@@ -25,9 +25,10 @@ import numpy as np
 from rapidfuzz import fuzz, process
 from sqlalchemy import select
 
-from organizador.duplicates.finder import under_roots
 from organizador.duplicates.keep import strip_copy_marker
+from organizador.features.name import strip_video_id
 from organizador.storage import Database
+from organizador.storage.index import under_roots
 from organizador.storage.models import Directory, File
 
 log = logging.getLogger(__name__)
@@ -36,26 +37,11 @@ MIN_NORMALIZED_LENGTH = 4  # «a.txt» y «b.txt» se parecen demasiado para sig
 _ROWS_PER_CHUNK = 512  # filas de la matriz de puntuaciones calculadas a la vez
 _SEPARATORS = re.compile(r"[\s._-]+")
 _DIGITS = re.compile(r"\d+")
-# ID de vídeo que yt-dlp añade al final: «título-yZHXoG0-f0k» o «título [FP7QnrPoORM]».
-_VIDEO_ID = re.compile(r"(?:-|\s\[)(?P<id>[A-Za-z0-9_-]{11})\]?$")
-
-
-def _strip_video_id(stem: str) -> str:
-    match = _VIDEO_ID.search(stem)
-    if match is None:
-        return stem
-    vid = match["id"]
-    # Exige aspecto de ID (no una palabra como «Revengeance»): dígitos, «_», «-» o
-    # al menos dos mayúsculas junto a minúsculas.
-    looks_like_id = any(c.isdigit() or c in "_-" for c in vid) or (
-        sum(c.isupper() for c in vid) >= 2 and any(c.islower() for c in vid)
-    )
-    return stem[: match.start()] if looks_like_id else stem
 
 
 def normalize(name: str) -> str:
     stem = Path(name).stem if "." in name.lstrip(".") else name
-    text = unicodedata.normalize("NFKC", strip_copy_marker(_strip_video_id(stem))).casefold()
+    text = unicodedata.normalize("NFKC", strip_copy_marker(strip_video_id(stem))).casefold()
     return _SEPARATORS.sub(" ", text).strip()
 
 

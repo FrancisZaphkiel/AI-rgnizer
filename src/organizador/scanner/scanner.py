@@ -79,6 +79,8 @@ _INVALIDATED: dict[str, Any] = {
     "image_width": None,
     "image_height": None,
     "mime": None,
+    "features": None,
+    "features_version": None,
 }
 
 

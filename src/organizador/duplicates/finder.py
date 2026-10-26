@@ -26,16 +26,16 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from organizador.core.config import DuplicateSettings
 from organizador.duplicates import hashing
 from organizador.duplicates.birthtime import birth_time_ns
-from organizador.duplicates.index import IndexWriter
 from organizador.duplicates.keep import KeepPolicy
 from organizador.duplicates.space import disk_usage
 from organizador.storage import Database
+from organizador.storage.index import FileSignature, IndexWriter, signature, under_roots
 from organizador.storage.models import Directory, File
 
 log = logging.getLogger(__name__)
@@ -149,7 +149,7 @@ class _Candidate:
         return (self.device, self.inode)
 
     @property
-    def signature(self) -> hashing.FileSignature:
+    def signature(self) -> FileSignature:
         return (self.size, self.mtime_ns, self.ctime_ns, self.inode, self.device)
 
     def get_hash(self, kind: HashKind) -> str | None:
@@ -179,15 +179,6 @@ def _hash_of(links: Sequence[_Candidate], kind: HashKind) -> str:
 
 def _distinct_inodes(group: Iterable[_Candidate]) -> int:
     return len({c.inode_key for c in group})
-
-
-def under_roots(roots: Sequence[Path]) -> ColumnElement[bool]:
-    clauses: list[ColumnElement[bool]] = []
-    for root in roots:
-        prefix = str(root).rstrip("/") + "/"
-        clauses.append(Directory.path == str(root))
-        clauses.append(Directory.path.startswith(prefix, autoescape=True))
-    return or_(*clauses)
 
 
 class DuplicateFinder:
@@ -359,7 +350,7 @@ class _FindJob:
         except OSError:
             self.stats.stale += 1
             return False
-        if hashing.signature(st) != c.signature:
+        if signature(st) != c.signature:
             self.stats.stale += 1
             return False
         c.nlink = st.st_nlink
@@ -388,7 +379,7 @@ class _FindJob:
             log.debug("No se pudo leer %s: %s", first.path, exc)
             self.stats.errors += 1
             return False
-        if hashing.signature(after) != first.signature:
+        if signature(after) != first.signature:
             # Cambió mientras se leía: el hash no corresponde a lo indexado.
             self.stats.stale += len(links)
             return False

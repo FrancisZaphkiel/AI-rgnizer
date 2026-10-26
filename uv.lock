@@ -664,6 +664,15 @@ wheels = [
 ]
 
 [[package]]
+name = "mutagen"
+version = "1.48.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/df/70/1675da133ea92227da41bf5b24e1c66be597ff736a1533ade41da986852f/mutagen-1.48.1.tar.gz", hash = "sha256:8f95637ab9f6f305cec6bd1294e197debe207998e3e068596563c74f86b0a173", size = 1276978, upload-time = "2026-06-25T09:47:32.443Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/47/d8/a29e4e3991765e7ce4ed1f7e4074fe1ba9da03e0048639734de60f9cadb9/mutagen-1.48.1-py3-none-any.whl", hash = "sha256:4f077fe87d3fc7fba259aa63d8c026b18382ca6a42ef37c61e16f1b1b5b82fe7", size = 195706, upload-time = "2026-06-25T09:47:30.296Z" },
+]
+
+[[package]]
 name = "mypy"
 version = "2.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -816,7 +825,10 @@ dependencies = [
     { name = "alembic" },
     { name = "blake3" },
     { name = "imagehash" },
+    { name = "mutagen" },
     { name = "pillow" },
+    { name = "pypdf" },
+    { name = "python-magic" },
     { name = "rapidfuzz" },
     { name = "sqlalchemy" },
     { name = "tomli-w" },
@@ -839,7 +851,10 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.14" },
     { name = "blake3", specifier = ">=1.0" },
     { name = "imagehash", specifier = ">=4.3" },
+    { name = "mutagen", specifier = ">=1.47" },
     { name = "pillow", specifier = ">=11" },
+    { name = "pypdf", specifier = ">=5.1" },
+    { name = "python-magic", specifier = ">=0.4.27" },
     { name = "rapidfuzz", specifier = ">=3.10" },
     { name = "sqlalchemy", specifier = ">=2.0.36" },
     { name = "tomli-w", specifier = ">=1.1" },
@@ -1004,6 +1019,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pypdf"
+version = "6.21.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/06/28/081f1cbcca7042441dafc8de00f48ba60853f89e5bff92c5f26477346d81/pypdf-6.21.2.tar.gz", hash = "sha256:0a3e1c5c886a1be03646c16a04827cc166c2a0575c971b26a4bf89686551c2d4", size = 7144571, upload-time = "2026-10-21T16:44:55.272Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1b/4d/c9d2d67f204eff463237a1a8f5e25a6923b7b1043982b91fcaf104c8ef60/pypdf-6.21.2-py3-none-any.whl", hash = "sha256:1d44d1a3a200f25062adff0085b02040e4646431ac2ccac22e42679e91466084", size = 407766, upload-time = "2026-10-21T16:44:53.626Z" },
+]
+
+[[package]]
 name = "pytest"
 version = "9.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1043,6 +1067,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f3/ee/cf608372c88ce2c136ee13c69ab6f667dbc0d0c1176af188b4ddc8853e66/python_discovery-1.6.4.tar.gz", hash = "sha256:bc70d31f0ec5de11eda13d4d64c16e24b3506a65984684f2b6c98cb83b2ea9df", size = 89883, upload-time = "2026-10-19T01:45:14.855Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/60/91/1aa70d3dfcab0dbcf88a2cbc3bce7f7c69562287a90216e617eaa4937e25/python_discovery-1.6.4-py3-none-any.whl", hash = "sha256:530179cc51a1816d512b15635b3dc931295ae12efb183783ad31190a5d425d2b", size = 39385, upload-time = "2026-10-19T01:45:13.668Z" },
+]
+
+[[package]]
+name = "python-magic"
+version = "0.4.27"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/db/0b3e28ac047452d079d375ec6798bf76a036a08182dbb39ed38116a49130/python-magic-0.4.27.tar.gz", hash = "sha256:c1ba14b08e4a5f5c31a302b7721239695b2f0f058d125bd5ce1ee36b9d9d3c3b", size = 14677, upload-time = "2022-06-07T20:16:59.508Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6c/73/9f872cb81fc5c3bb48f7227872c28975f998f3e7c2b1c16e95e6432bbb90/python_magic-0.4.27-py2.py3-none-any.whl", hash = "sha256:c212960ad306f700aa0d01e5d7a325d20548ff97eb9920dcd29513174f0294d3", size = 13840, upload-time = "2022-06-07T20:16:57.763Z" },
 ]
 
 [[package]]

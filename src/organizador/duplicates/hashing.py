@@ -7,19 +7,11 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import xxhash
 
 from organizador.actions.fsops import hash_file
-
-FileSignature = tuple[int, int, int, int, int]
-
-
-def signature(st: os.stat_result) -> FileSignature:
-    """Misma firma que usa el escáner: si cambia, el hash guardado ya no vale."""
-    return (st.st_size, st.st_mtime_ns, st.st_ctime_ns, st.st_ino, st.st_dev)
 
 
 def needs_partial(size: int, partial_bytes: int) -> bool:
