@@ -7,6 +7,7 @@ import logging
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol, Self
 
@@ -23,6 +24,7 @@ from organizador.duplicates import (
     trash_redundant,
     trash_similar,
 )
+from organizador.duplicates.names import NameGroup, SimilarNameFinder
 from organizador.scanner import Scanner, ScanStats
 from organizador.storage import Database
 
@@ -290,6 +292,35 @@ def _cmd_similar(ctx: AppContext, args: argparse.Namespace) -> int:
     return _trash_similar_groups(ctx.actions(), report.groups)
 
 
+def _print_names(index: int, group: NameGroup) -> None:
+    kind = "mismo nombre" if group.identical_names else "nombres parecidos"
+    print(f"\nIndicio {index} · {len(group.files)} archivos con {kind} (contenido distinto)")
+    for n, f in enumerate(group.files, start=1):
+        when = datetime.fromtimestamp(f.mtime_ns / 1e9).strftime("%Y-%m-%d %H:%M")
+        score = "referencia" if n == 1 else f"parecido {f.score}%"
+        print(f"  [{n}] {f.path}  ({human_size(f.size)}, {when}, {score})")
+
+
+def _cmd_names(ctx: AppContext, args: argparse.Namespace) -> int:
+    roots = _resolve_roots(ctx, args)
+    if roots is None:
+        return 2
+    if not args.no_scan and _cmd_scan(ctx, argparse.Namespace(roots=roots)) != 0:
+        return 1
+    finder = SimilarNameFinder(
+        ctx.db, min_score=args.min_score, min_size=ctx.settings.duplicates.min_size
+    )
+    report = finder.find(roots)
+    for index, group in enumerate(report.groups, start=1):
+        _print_names(index, group)
+    print(
+        f"\n{len(report.groups)} grupos de nombres parecidos entre {report.files} archivos.\n"
+        "Un nombre parecido no significa que sobre un archivo (pueden ser versiones distintas):"
+        "\nrevísalos y, si decides eliminar alguno, usa: organizador trash ARCHIVO"
+    )
+    return 0
+
+
 def _cmd_mv(ctx: AppContext, args: argparse.Namespace) -> int:
     result = ctx.actions().move(args.source, args.dest_dir)
     print(f"{result.action_id[:8]}  {result.source} → {result.destination}")
@@ -374,6 +405,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--trash",
         action="store_true",
         help="pregunta grupo por grupo si enviar las parecidas a la papelera",
+    )
+
+    p = add("names", _cmd_names, "muestra archivos con nombres parecidos (solo indicios)")
+    p.add_argument("roots", nargs="*", type=Path)
+    p.add_argument("--no-scan", action="store_true", help="usa el índice sin reescanear")
+    p.add_argument(
+        "--min-score",
+        type=int,
+        default=90,
+        metavar="0-100",
+        help="parecido mínimo entre nombres (por defecto 90)",
     )
 
     p = add("mv", _cmd_mv, "mueve un archivo a una carpeta (sin sobrescribir)")

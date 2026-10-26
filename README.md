@@ -25,6 +25,7 @@ uv run organizador dupes ~/Documentos          # duplicados exactos (solo muestr
 uv run organizador dupes ~/Documentos --trash  # pregunta por grupo y envía sobrantes a la papelera
 uv run organizador similar ~/Imágenes          # imágenes casi idénticas (solo candidatos)
 uv run organizador similar ~/Imágenes --trash  # confirmación obligatoria grupo a grupo (sin --yes)
+uv run organizador names ~/Descargas ~/Documentos  # nombres parecidos: solo indicios, no borra nada
 uv run organizador history
 uv run organizador undo ID
 ```

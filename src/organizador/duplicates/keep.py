@@ -29,6 +29,11 @@ _COPY_SUFFIX = re.compile(
 _COPY_PREFIX = re.compile(r"^(?:copia de|copy of)\s+", re.IGNORECASE)
 
 
+def strip_copy_marker(stem: str) -> str:
+    """``foto (1)`` → ``foto``; ``Copia de foto`` → ``foto``."""
+    return _COPY_PREFIX.sub("", _COPY_SUFFIX.sub("", stem))
+
+
 def has_copy_marker(name: str) -> bool:
     """¿El nombre parece el de una copia? Se ignora la extensión."""
     stem = Path(name).stem if "." in name.lstrip(".") else name

@@ -19,6 +19,7 @@ dependencies = [
     "xxhash>=3.5",
     "pillow>=11",
     "imagehash>=4.3",
+    "rapidfuzz>=3.10",
 ]
 
 [project.scripts]
