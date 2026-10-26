@@ -191,3 +191,9 @@ class RemoteBackend:
                 "Teach", str(path.expanduser().absolute()), str(folder.expanduser().absolute())
             )
         )
+
+    def set_pattern(self, folder: str, template: str, enabled: bool) -> None:
+        self.client.call("SetPattern", folder, template, enabled)
+
+    def reload_settings(self) -> None:
+        self.client.call("ReloadSettings")

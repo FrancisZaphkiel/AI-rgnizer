@@ -25,6 +25,7 @@ from organizador.app import (
     SuggestionError,
     classifier,
     folder_names,
+    folder_pattern,
     learning_exclude,
     record_choice,
 )
@@ -53,7 +54,7 @@ from organizador.learning.dataset import Dataset, build_dataset, find_project_di
 from organizador.learning.decide import decide_many
 from organizador.learning.evaluate import evaluate
 from organizador.learning.model import DestinationModel, NotEnoughDataError, Prediction
-from organizador.learning.patterns import FolderPattern, dominant_pattern, render
+from organizador.learning.patterns import FolderPattern, render
 from organizador.learning.review import Misplaced, find_misplaced, is_in
 from organizador.learning.store import IncompatibleModelError, ModelNotFoundError
 from organizador.scanner import Scanner, ScanStats
@@ -601,7 +602,7 @@ def _print_name_proposal(ctx: AppContext, path: Path, prediction: Prediction) ->
     if best is None or is_in(path.expanduser().resolve(), best.label):
         return
     names = _names_by_folder(ctx, [Path(best.label)]).get(best.label, [])
-    found = dominant_pattern(names)
+    found = folder_pattern(ctx, best.label, names)
     if found is None:
         return
     when = datetime.fromtimestamp(path.stat().st_mtime)
@@ -632,7 +633,7 @@ def _cmd_patterns(ctx: AppContext, args: argparse.Namespace) -> int:
     for folder, names in sorted(_names_by_folder(ctx, roots).items()):
         if any(Path(folder).is_relative_to(p) for p in skipped):
             continue
-        if (found := dominant_pattern(names)) is not None:
+        if (found := folder_pattern(ctx, folder, names)) is not None:
             _print_pattern(folder, found)
             shown += 1
     print(f"\n{shown} carpetas con un patrón de nombres claro.")
@@ -854,6 +855,20 @@ def _cmd_service(_ctx: AppContext, args: argparse.Namespace) -> int:
     return systemd.systemctl("status", "--no-pager", systemd.UNIT_NAME)
 
 
+def _cmd_gui(ctx: AppContext, args: argparse.Namespace) -> int:
+    try:
+        from organizador.gui.app import main as gui_main  # noqa: PLC0415 - PySide6 es opcional
+    except ImportError as exc:
+        print(
+            f"error: falta PySide6 ({exc}); instálalo con «uv sync --extra gui» "
+            "o «sudo pacman -S pyside6»",
+            file=sys.stderr,
+        )
+        return 1
+    ctx.db.dispose()  # la GUI abre su propio contexto
+    return gui_main(["--hidden"] if args.hidden else [])
+
+
 def _add_watch_commands(add: Callable[[str, Command, str], argparse.ArgumentParser]) -> None:
     p = add("watch", _cmd_watch, "vigila Descargas y sugiere destino a lo que llega")
     p.add_argument("dirs", nargs="*", type=Path, help="por defecto, watched_dirs de config.toml")
@@ -873,6 +888,9 @@ def _add_watch_commands(add: Callable[[str, Command, str], argparse.ArgumentPars
     p = add("accept", _cmd_accept, "mueve el archivo de una sugerencia y lo aprende")
     p.add_argument("id", type=int)
     p.add_argument("--to", type=Path, metavar="CARPETA", help="otra carpeta en vez de la sugerida")
+
+    p = add("gui", _cmd_gui, "abre la interfaz gráfica")
+    p.add_argument("--hidden", action="store_true", help="arranca solo en la bandeja")
 
     p = add("daemon", _cmd_daemon, "servicio: vigila, notifica y atiende la API D-Bus")
     p.add_argument("--no-notify", dest="notify", action="store_false", help="sin notificaciones")

@@ -22,6 +22,9 @@ Métodos
     ``Trash(s source, s expected_hash) → a{sv}``   papelera; con hash (duplicados) se
                                        rechaza si el contenido ya no coincide
     ``Teach(s path, s folder) → s``    corrige al modelo sin mover; devuelve qué aprendió
+    ``SetPattern(s folder, s template, b enabled)``  plantilla de nombres del usuario
+                                       para una carpeta (manda sobre la inferida)
+    ``ReloadSettings()``               relee config.toml y reinicia la vigilancia
     ``History(u limit) → aa{sv}``      últimas acciones
     ``Rescan()``                       relee ahora las carpetas vigiladas
 

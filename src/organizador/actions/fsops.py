@@ -240,3 +240,40 @@ def remove_service_file(path: Path) -> None:
         os.unlink(path)
     except FileNotFoundError:
         return
+
+
+APP_DATA_FILES = frozenset({"organizador.db", "organizador.db-wal", "organizador.db-shm"})
+
+
+def remove_app_data(data_dir: Path) -> list[Path]:
+    """Borra la base de datos y las versiones del modelo («borrar datos aprendidos»).
+
+    Solo toca los archivos de la aplicación en ``data_dir``: la base (con su WAL) y
+    ``models/model-NNNN.joblib`` y ``models/current``. Nunca archivos del usuario.
+    """
+    removed: list[Path] = []
+    for name in sorted(APP_DATA_FILES):
+        path = data_dir / name
+        if path.is_file() and not path.is_symlink():
+            os.unlink(path)
+            removed.append(path)
+    models = data_dir / "models"
+    if models.is_dir() and not models.is_symlink():
+        for path in sorted(models.iterdir()):
+            if path.is_file() and (MODEL_FILE.fullmatch(path.name) or path.name == "current"):
+                os.unlink(path)
+                removed.append(path)
+    return removed
+
+
+AUTOSTART_FILE = "io.github.organizador.Organizador.desktop"
+
+
+def remove_autostart_entry(path: Path) -> None:
+    """Borra la entrada de ``~/.config/autostart`` que creó la aplicación (y ninguna otra)."""
+    if path.name != AUTOSTART_FILE or path.parent.name != "autostart":
+        raise ValueError(f"No es la entrada de inicio de la aplicación: {path}")
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        return

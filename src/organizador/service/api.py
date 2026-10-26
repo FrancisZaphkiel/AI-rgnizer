@@ -87,6 +87,14 @@ class OrganizadorInterface(ServiceInterface):
         return await self._daemon.teach(path, folder)
 
     @method()
+    async def SetPattern(self, folder: DBusStr, template: DBusStr, enabled: DBusBool) -> NoReply:
+        await self._daemon.set_pattern(folder, template, enabled)
+
+    @method()
+    async def ReloadSettings(self) -> NoReply:
+        await self._daemon.reload_settings()
+
+    @method()
     async def History(self, limit: DBusUInt32) -> DBusDictList:
         return await self._daemon.history(limit)
 

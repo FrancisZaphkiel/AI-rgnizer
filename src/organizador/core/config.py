@@ -170,7 +170,8 @@ def save_settings(paths: AppPaths, settings: Settings) -> None:
 
 
 def set_config_value(paths: AppPaths, key: str, value: Any) -> None:
-    """Cambia una clave de primer nivel sin escribir el resto de valores por defecto.
+    """Cambia una clave (``"watched_dirs"``, ``"watch.mode"``…) sin escribir el resto de
+    valores por defecto.
 
     Los comentarios de ``config.toml`` se pierden (``tomli_w`` no los conserva).
     """
@@ -179,7 +180,11 @@ def set_config_value(paths: AppPaths, key: str, value: Any) -> None:
             data = tomllib.load(fh)
     except FileNotFoundError:
         data = {}
-    data[key] = value
+    *parents, last = key.split(".")
+    table = data
+    for part in parents:
+        table = table.setdefault(part, {})
+    table[last] = value
     Settings.from_dict(data)  # valida antes de escribir
     _write_toml(paths, data)
 

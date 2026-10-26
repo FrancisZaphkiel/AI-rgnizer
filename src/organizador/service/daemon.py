@@ -269,6 +269,22 @@ class Daemon:
     async def teach(self, path: str, folder: str) -> str:
         return await self._op(self._backend().teach, Path(path), Path(folder))
 
+    async def set_pattern(self, folder: str, template: str, enabled: bool) -> None:
+        await self._op(self._backend().set_pattern, folder, template, enabled)
+
+    async def reload_settings(self) -> None:
+        """Relee ``config.toml`` y reinicia la vigilancia con las carpetas nuevas."""
+
+        def reload() -> None:
+            self._close()
+            self._backend().reload_settings()
+            self.mode = self._ctx.settings.watch.mode
+            self.watched_dirs = [d.expanduser() for d in self._ctx.settings.watched_dirs]
+            self._start()
+
+        await self._write(reload)
+        log.info("Configuración recargada (%s): %s", self.mode, self.watched_dirs)
+
     async def history(self, limit: int) -> list[dict[str, Variant]]:
         def read() -> list[dict[str, Variant]]:
             assert self._actions is not None

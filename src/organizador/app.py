@@ -7,6 +7,7 @@ decide cómo mostrarlos.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,12 +24,14 @@ from organizador.learning.dataset import build_dataset, find_project_dirs, label
 from organizador.learning.decide import decide
 from organizador.learning.folders import FolderNames
 from organizador.learning.model import DestinationModel, NotEnoughDataError, Prediction
+from organizador.learning.patterns import FolderPattern, NamePattern, dominant_pattern
 from organizador.learning.store import IncompatibleModelError, ModelNotFoundError, ModelStore
 from organizador.storage import Database
 from organizador.storage.models import (
     ActionJournal,
     DownloadSuggestion,
     Feedback,
+    NamingPattern,
     SuggestionState,
 )
 
@@ -196,6 +199,58 @@ def teach(
     if not path.is_file() or not folder.is_dir():
         raise ValueError("indica un archivo existente y una carpeta existente")
     return record_choice(ctx, path, folder, extract_features(path), load)
+
+
+# --- patrones de nombres ----------------------------------------------------------------
+
+_PLACEHOLDER = re.compile(r"\{(fecha:[^{}]+|texto|n|id)\}")
+
+
+def folder_pattern(ctx: AppContext, folder: str, names: Sequence[str]) -> FolderPattern | None:
+    """Patrón de ``folder``: el que editó el usuario manda sobre el inferido."""
+    found = dominant_pattern(names)
+    with ctx.db.session() as s:
+        edited = s.scalar(
+            select(NamingPattern).where(
+                NamingPattern.directory == folder, NamingPattern.user_edited.is_(True)
+            )
+        )
+    if edited is None:
+        return found
+    if not edited.enabled:
+        return None
+    case = found.pattern.case if found else "—"
+    sep = found.pattern.text_separator if found else None
+    support, total = (found.support, found.total) if found else (0, len(names))
+    examples = found.examples if found else tuple(sorted(names)[:3])
+    return FolderPattern(NamePattern(edited.template, case, sep), support, total, examples)
+
+
+def set_pattern(ctx: AppContext, folder: str, template: str, enabled: bool) -> None:
+    """Guarda la plantilla del usuario para ``folder`` (o la desactiva con ``enabled=False``).
+
+    Lanza ``ValueError`` si la plantilla no tiene ningún campo (``{fecha:…}``, ``{texto}``,
+    ``{n}``) o tiene llaves sin cerrar.
+    """
+    template = template.strip()
+    stripped = _PLACEHOLDER.sub("", template).replace("{{", "").replace("}}", "")
+    if enabled and (not _PLACEHOLDER.search(template) or "{" in stripped or "}" in stripped):
+        raise ValueError(
+            f"Plantilla no válida: {template!r} (usa {{fecha:AAAA-MM-DD}}, {{texto}}, {{n}})"
+        )
+    with ctx.db.session() as s:
+        for row in s.scalars(select(NamingPattern).where(NamingPattern.directory == folder)):
+            s.delete(row)
+        s.flush()
+        s.add(
+            NamingPattern(
+                directory=folder, template=template, enabled=enabled, user_edited=True, support=0
+            )
+        )
+
+
+def reload_settings(ctx: AppContext) -> None:
+    ctx.settings = load_settings(ctx.paths)
 
 
 # --- sugerencias de las carpetas vigiladas ------------------------------------------------

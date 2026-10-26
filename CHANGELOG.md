@@ -7,6 +7,12 @@ según [SemVer](https://semver.org/lang/es/).
 
 ### Añadido
 
+- **Interfaz gráfica** (PySide6, extra opcional `gui`): `organizador gui [--hidden]` u
+  `organizador-gui`. Secciones Panel, Descargas, Duplicados (miniaturas, ★ copia a
+  conservar, papelera con confirmación), Patrones (editables), Historial (deshacer) y
+  Ajustes (carpetas, modo, umbral, arranque con la sesión, exportar y borrar datos).
+  Icono de bandeja con contador de pendientes. Usa el servicio por D-Bus si está en
+  marcha; si no, trabaja en local. Todo lo lento va en segundo plano.
 - **La CLI delega en el servicio** cuando está en marcha sobre la misma base de datos
   (único escritor): `mv`, `rename`, `trash`, `undo`, `accept`, `ignore`, `teach`,
   `review --move` y las papeleras de `dupes`/`similar`. Opción global `--local`.

@@ -130,6 +130,19 @@ y el servicio recarga el modelo al detectar una versión nueva.
 Nada sale del equipo (hay un test que bloquea los sockets de red) y el modelo solo sugiere:
 mover o renombrar siempre pasa por las acciones seguras y se puede deshacer.
 
+### Interfaz gráfica
+
+```fish
+uv sync --extra gui                 # PySide6
+uv run organizador gui              # ventana principal + icono de bandeja
+uv run organizador gui --hidden     # solo la bandeja (lo usa el arranque con la sesión)
+```
+
+Si el servicio está en marcha la GUI le pide las operaciones por D-Bus y se actualiza con
+sus señales; si no, trabaja en local. Enviar a la papelera pide siempre confirmación y todo
+se puede deshacer desde **Historial**. **Ajustes → Borrar datos aprendidos** elimina la
+base de datos y los modelos (no tus archivos ni la configuración).
+
 ## Desarrollo
 
 ```fish

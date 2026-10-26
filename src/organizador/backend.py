@@ -21,6 +21,8 @@ from organizador.app import (
     ignore_suggestion,
     load_model,
     move_and_learn,
+    reload_settings,
+    set_pattern,
     teach,
     undo_action,
 )
@@ -49,6 +51,12 @@ class Backend(Protocol):
     def ignore(self, suggestion_id: int) -> None: ...
 
     def teach(self, path: Path, folder: Path) -> str: ...
+
+    def set_pattern(self, folder: str, template: str, enabled: bool) -> None: ...
+
+    def reload_settings(self) -> None:
+        """Aplica los cambios de ``config.toml`` (el servicio reinicia la vigilancia)."""
+        ...
 
 
 class LocalBackend:
@@ -95,6 +103,12 @@ class LocalBackend:
 
     def teach(self, path: Path, folder: Path) -> str:
         return teach(self._ctx, path, folder, self._load)
+
+    def set_pattern(self, folder: str, template: str, enabled: bool) -> None:
+        set_pattern(self._ctx, folder, template, enabled)
+
+    def reload_settings(self) -> None:
+        reload_settings(self._ctx)
 
 
 def open_backend(
