@@ -3,6 +3,39 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); versiones
 según [SemVer](https://semver.org/lang/es/).
 
+## [Sin publicar]
+
+Fase 3: aprendizaje de costumbres, desde la línea de comandos. La versión `v0.2.0` se
+publicará al cerrar la Fase 4 (vigilancia de Descargas), según el plan.
+
+### Añadido
+
+- **Características por archivo** (caché en el índice): palabras, fechas, versión y marcas
+  de copia del nombre; extensión, MIME (libmagic), tamaño, EXIF, metadatos PDF y de audio,
+  y dominio de origen (`user.xdg.origin.url`).
+- **Modelo de destino** (`train`, `evaluate`, `suggest`): carpetas ya organizadas como
+  ejemplos (sin proyectos de software, duplicados ni carpetas con pocos archivos);
+  `SGDClassifier` sobre tokens y n-gramas del nombre, calibrado con *temperature scaling* y
+  con abstención («sin clasificar»); reglas «token → carpeta» aprendidas; explicación con
+  los tokens reales del archivo. En datos reales: top-1 96,7 %, top-3 98,7 %, ECE 0,017.
+- **Prioridad de destinos**: reglas de `config.toml` → reglas aprendidas → modelo → nombre
+  de carpeta existente → destino por tipo (carpetas XDG) → sin clasificar. Funciona sin
+  modelo entrenado.
+- **Aprendizaje continuo**: `mv` y `teach` registran la elección y ajustan el modelo; una
+  carpeta nueva se aprende con un reentrenamiento automático tras `retrain_after` archivos.
+  Versiones del modelo con `model list` / `model revert`.
+- **Revisión** (`review [--move]`): archivos posiblemente mal ubicados, juzgados con
+  validación cruzada; ignora estructuras exportadas y copias deliberadas.
+- **Patrones de nombres** (`patterns`): plantillas por carpeta
+  (`2024-05-10_informe_v2.pdf` → `{fecha:AAAA-MM-DD}_{texto}_v{n}`) y, en `suggest`, el
+  nombre que tendría el archivo según el patrón de su destino.
+
+### Seguridad
+
+- Ningún dato sale del equipo: test que bloquea sockets `AF_INET`/`AF_INET6`.
+- Los modelos (joblib/pickle) solo se cargan desde la carpeta de datos propia (0700) y se
+  podan a través de `fsops`.
+
 ## [0.1.0] — 2026-10-25
 
 Primer hito: núcleo, acciones seguras y duplicados, desde la línea de comandos (Fases 0–2).

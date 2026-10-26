@@ -244,16 +244,21 @@ Cada fase termina con una **batería de pruebas obligatoria**; la fase no se cie
 - Ciclo de feedback: aceptar/corregir actualiza modelo y reglas; versionado del modelo para revertir.
 
 **Pruebas de cierre**
-- [ ] Unitarias de cada extractor de features (incluyendo archivos corruptos o sin metadatos).
-- [ ] Árbol sintético de "usuario" (fixtures): verifica comportamientos conocidos (reglas, pipeline), no precisión.
-- [ ] Evaluación offline sobre un **conjunto real y privado** (archivos propios, etiquetas verificadas, separado del entrenamiento, nunca versionado): **top‑1 ≥ 70 %, top‑3 ≥ 90 %** sobre las predicciones no abstenidas, reportando también la tasa de abstención.
-- [ ] Calibración medida (curva de fiabilidad / ECE) antes de habilitar el modo automático.
-- [ ] Añadir una carpeta destino nueva y corregir hacia ella hace que el modelo la prediga (reentrenamiento).
-- [ ] Tras N correcciones del mismo tipo, el modelo cambia su predicción (test de aprendizaje incremental).
-- [ ] El inferidor de patrones reconoce `2024-05-10_informe_v2.pdf` → `{fecha:AAAA-MM-DD}_{texto}_v{n}`.
-- [ ] La explicación generada referencia features reales del archivo.
-- [ ] El modelo persiste y se recarga dando las mismas predicciones.
-- [ ] Ningún dato sale del equipo: test que bloquea sockets `AF_INET`/`AF_INET6` (los sockets Unix de D-Bus siguen permitidos).
+- [x] Unitarias de cada extractor de features (incluyendo archivos corruptos o sin metadatos).
+- [x] Árbol sintético de "usuario" (fixtures): verifica comportamientos conocidos (reglas, pipeline), no precisión.
+- [x] Evaluación offline sobre un **conjunto real y privado** (archivos propios, etiquetas verificadas, separado del entrenamiento, nunca versionado): **top‑1 ≥ 70 %, top‑3 ≥ 90 %** sobre las predicciones no abstenidas, reportando también la tasa de abstención.
+- [x] Calibración medida (curva de fiabilidad / ECE) antes de habilitar el modo automático.
+- [x] Añadir una carpeta destino nueva y corregir hacia ella hace que el modelo la prediga (reentrenamiento).
+- [x] Tras N correcciones del mismo tipo, el modelo cambia su predicción (test de aprendizaje incremental).
+- [x] El inferidor de patrones reconoce `2024-05-10_informe_v2.pdf` → `{fecha:AAAA-MM-DD}_{texto}_v{n}`.
+- [x] La explicación generada referencia features reales del archivo.
+- [x] El modelo persiste y se recarga dando las mismas predicciones.
+- [x] Ningún dato sale del equipo: test que bloquea sockets `AF_INET`/`AF_INET6` (los sockets Unix de D-Bus siguen permitidos).
+
+**Resultado (2026-10-25)**: evaluación real en [`docs/benchmarks/fase3.md`](docs/benchmarks/fase3.md)
+— top‑1 96,7 %, top‑3 98,7 %, abstención 2,1 %, ECE 0,017. Las etiquetas son la carpeta en la
+que ya está cada archivo (no verificadas una a una); `organizador review` ayuda a detectar
+las que están mal y conviene repetir la evaluación tras limpiarlas.
 
 ### Fase 4 — Vigilancia de Descargas y servicio (HU-05, HU-07, HU-09, HU-18)
 **Tareas**

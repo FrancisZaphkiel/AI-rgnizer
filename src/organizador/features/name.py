@@ -28,9 +28,7 @@ _DATE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("AAAA-MM", re.compile(r"(?<!\d)(?P<y>(?:19|20)\d\d)[-_.](?P<m>[01]\d)(?![-_.]?\d)")),
     ("AAAAMM", re.compile(r"(?<!\d)(?P<y>(?:19|20)\d\d)(?P<m>[01]\d)(?!\d)")),
 )
-_VERSION = re.compile(
-    r"(?<![a-z])v(?:er(?:sion|sión)?)?[\s_.-]?(?P<n>\d+(?:\.\d+)*)(?![\d.])", re.I
-)
+VERSION = re.compile(r"(?<![a-z])v(?:er(?:sion|sión)?)?[\s_.-]?(?P<n>\d+(?:\.\d+)*)(?![\d.])", re.I)
 # Palabras: letras (de cualquier alfabeto) o números; el resto separa.
 _WORD = re.compile(r"[^\W\d_]+|\d+")
 _CAMEL = re.compile(r"(?<=[a-z])(?=[A-Z])")
@@ -135,7 +133,7 @@ class NameInfo:
     has_digits: bool
 
 
-def _find_date(stem: str) -> tuple[NameDate, tuple[int, int]] | None:
+def find_date(stem: str) -> tuple[NameDate, tuple[int, int]] | None:
     """Primera fecha válida del nombre y su posición."""
     for fmt, pattern in _DATE_PATTERNS:
         for match in pattern.finditer(stem):
@@ -155,8 +153,8 @@ def _blank(text: str, span: tuple[int, int]) -> str:
 def analyse_name(name: str) -> NameInfo:
     stem, extension = split_name(name)
     clean = strip_copy_marker(strip_video_id(stem))
-    found = _find_date(clean)
-    version = _VERSION.search(clean)
+    found = find_date(clean)
+    version = VERSION.search(clean)
     # La fecha y la versión ya son características propias: no se repiten como palabras.
     remaining = _blank(clean, found[1]) if found else clean
     if version:

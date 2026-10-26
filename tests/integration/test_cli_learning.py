@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -144,3 +145,33 @@ def test_mv_no_learn_records_nothing(
     src.write_text("a")
     assert main(["mv", "--no-learn", str(src), str(organized / "Banco")]) == 0
     assert "anotado" not in capsys.readouterr().out
+
+
+def test_patterns_and_name_proposal(
+    isolated_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    docs = isolated_home / "Documentos"
+    for i in range(6):
+        for folder, name in (
+            ("Informes", f"2024-0{i + 1}-10_informe_v{i}.pdf"),
+            ("Fotos", f"IMG_{i}.jpg"),
+        ):
+            path = docs / folder / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(name.encode())
+    assert main(["patterns", str(docs)]) == 0
+    out = capsys.readouterr().out
+    assert "{fecha:AAAA-MM-DD}_{texto}_v{n} (minúsculas)" in out
+    assert "6 de 6 archivos" in out
+
+    assert main(["train", str(docs), "--no-scan"]) == 0
+    new = isolated_home / "Descargas/Informe Mensual v7.pdf"
+    new.parent.mkdir()
+    new.write_bytes(b"n")
+    os.utime(new, (1_700_000_000, 1_700_000_000))  # 2023-11-14
+    capsys.readouterr()
+    assert main(["suggest", str(new)]) == 0
+    out = capsys.readouterr().out
+    assert "nombre según la carpeta" in out
+    assert "2023-11-14_informe_mensual_v7.pdf" in out
+    assert new.exists()  # solo sugiere

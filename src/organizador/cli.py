@@ -33,11 +33,13 @@ from organizador.learning.decide import decide, decide_many
 from organizador.learning.evaluate import evaluate
 from organizador.learning.folders import FolderNames
 from organizador.learning.model import DestinationModel, NotEnoughDataError, Prediction
+from organizador.learning.patterns import FolderPattern, dominant_pattern, render
 from organizador.learning.review import Misplaced, find_misplaced, is_in
 from organizador.learning.store import IncompatibleModelError, ModelNotFoundError, ModelStore
 from organizador.scanner import Scanner, ScanStats
 from organizador.storage import Database
-from organizador.storage.models import Feedback
+from organizador.storage.index import under_roots
+from organizador.storage.models import Directory, Feedback, File
 
 log = logging.getLogger("organizador")
 
@@ -511,6 +513,7 @@ def _cmd_suggest(ctx: AppContext, args: argparse.Namespace) -> int:
     predictions = decide_many(features, model, ctx.settings.learning, _folder_names(ctx))
     for path, prediction in zip(files, predictions, strict=True):
         _print_prediction(path, prediction)
+        _print_name_proposal(ctx, path, prediction)
     return 0 if len(files) == len(args.files) else 2
 
 
@@ -628,6 +631,61 @@ def _cmd_review(ctx: AppContext, args: argparse.Namespace) -> int:
     return 0
 
 
+def _names_by_folder(ctx: AppContext, roots: Sequence[Path]) -> dict[str, list[str]]:
+    """Nombres de archivo de cada carpeta indexada bajo ``roots`` (sin subcarpetas)."""
+    with ctx.db.session() as session:
+        rows = session.execute(
+            select(Directory.path, File.name).join(File).where(under_roots(roots))
+        ).all()
+    out: dict[str, list[str]] = {}
+    for folder, name in rows:
+        out.setdefault(folder, []).append(name)
+    return out
+
+
+def _print_name_proposal(ctx: AppContext, path: Path, prediction: Prediction) -> None:
+    best = prediction.best
+    if best is None or is_in(path.expanduser().resolve(), best.label):
+        return
+    names = _names_by_folder(ctx, [Path(best.label)]).get(best.label, [])
+    found = dominant_pattern(names)
+    if found is None:
+        return
+    when = datetime.fromtimestamp(path.stat().st_mtime)
+    proposed = render(found.pattern, path.name, when)
+    if proposed and proposed != path.name:
+        print(
+            f"  nombre según la carpeta ({found.support} de {found.total} siguen "
+            f"{found.pattern}): {proposed}"
+        )
+
+
+def _print_pattern(folder: str, found: FolderPattern) -> None:
+    print(f"\n{folder}")
+    print(f"  {found.pattern}  ·  {found.support} de {found.total} archivos ({found.fraction:.0%})")
+    for example in found.examples:
+        print(f"    {example}")
+
+
+def _cmd_patterns(ctx: AppContext, args: argparse.Namespace) -> int:
+    roots = _resolve_roots(ctx, args)
+    if roots is None:
+        return 2
+    if not args.no_scan and _cmd_scan(ctx, argparse.Namespace(roots=roots)) != 0:
+        return 1
+    skipped = [*_learning_exclude(ctx), *map(Path, find_project_dirs(ctx.db, roots))]
+    skipped = [p.expanduser().resolve() for p in skipped]
+    shown = 0
+    for folder, names in sorted(_names_by_folder(ctx, roots).items()):
+        if any(Path(folder).is_relative_to(p) for p in skipped):
+            continue
+        if (found := dominant_pattern(names)) is not None:
+            _print_pattern(folder, found)
+            shown += 1
+    print(f"\n{shown} carpetas con un patrón de nombres claro.")
+    return 0
+
+
 def _cmd_model(ctx: AppContext, args: argparse.Namespace) -> int:
     store = ctx.models()
     if args.action == "revert":
@@ -667,6 +725,10 @@ def _add_learning_commands(add: Callable[[str, Command, str], argparse.ArgumentP
     p.add_argument("roots", nargs="*", type=Path)
     p.add_argument("--no-scan", action="store_true", help="usa el índice sin reescanear")
     p.add_argument("--move", action="store_true", help="pregunta archivo por archivo si moverlo")
+
+    p = add("patterns", _cmd_patterns, "muestra cómo nombras los archivos de cada carpeta")
+    p.add_argument("roots", nargs="*", type=Path)
+    p.add_argument("--no-scan", action="store_true", help="usa el índice sin reescanear")
 
     p = add("suggest", _cmd_suggest, "sugiere carpetas para archivos (no los mueve)")
     p.add_argument("files", nargs="+", type=Path)

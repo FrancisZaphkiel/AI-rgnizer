@@ -4,7 +4,8 @@ Organizador inteligente de archivos para Linux (probado en CachyOS). Aprende có
 tus carpetas, sugiere destinos para lo que llega a Descargas y detecta duplicados. Todo es local
 y reversible: nada se borra, solo se envía a la papelera.
 
-Estado: `v0.1.0` (Fases 0–2: núcleo, acciones seguras y duplicados, por CLI). Ver [`PLAN.md`](PLAN.md).
+Estado: Fases 0–3 completas por CLI (núcleo, acciones seguras, duplicados y aprendizaje de
+costumbres); última versión publicada `v0.1.0`. Ver [`PLAN.md`](PLAN.md) y [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Instalación para desarrollo (CachyOS / Arch)
 
@@ -30,6 +31,39 @@ uv run organizador history
 uv run organizador undo ID
 ```
 
+### Aprendizaje de costumbres
+
+```fish
+uv run organizador train ~/Documentos ~/Música ~/Imágenes ~/Vídeos  # aprende de lo ya organizado
+uv run organizador evaluate                     # precisión con archivos no vistos (top-1/top-3, ECE)
+uv run organizador suggest ~/Descargas/*.pdf    # top-3 destinos y nombre según la carpeta; no mueve
+uv run organizador mv -p ARCHIVO CARPETA        # mueve y aprende (--no-learn para no aprender)
+uv run organizador teach ARCHIVO CARPETA        # corrige al modelo sin mover
+uv run organizador review [--move]              # archivos posiblemente mal ubicados
+uv run organizador patterns                     # cómo nombras los archivos de cada carpeta
+uv run organizador model list | model revert N  # versiones del modelo
+```
+
+El destino se decide por prioridad: reglas de `config.toml` → reglas aprendidas → modelo (si
+está seguro) → carpeta cuyo nombre aparece en el del archivo → destino por tipo (carpetas
+XDG) → sin clasificar. Ejemplo de configuración:
+
+```toml
+indexed_dirs = ["~/Documentos", "~/Música", "~/Imágenes", "~/Vídeos"]
+
+[learning]
+exclude = ["~/Documentos/camerapy"]   # carpetas que no reflejan tus costumbres
+
+[learning.rules]                      # mandan sobre todo lo aprendido
+"ext:jpg" = "~/Imágenes"
+
+[learning.type_destinations]          # destino inicial por tipo
+"tipo:image" = "~/Imágenes"
+```
+
+Nada sale del equipo (hay un test que bloquea los sockets de red) y el modelo solo sugiere:
+mover o renombrar siempre pasa por las acciones seguras y se puede deshacer.
+
 ## Desarrollo
 
 ```fish
@@ -54,4 +88,5 @@ Flujo de ramas: Git Flow (`feature/*` desde `develop`). Commits con Conventional
 |---|---|
 | `~/.config/organizador/config.toml` | Configuración |
 | `~/.local/share/organizador/organizador.db` | Índice, journal y aprendizaje (SQLite) |
+| `~/.local/share/organizador/models/` | Versiones del modelo (`model-NNNN.joblib`, `current`) |
 | `~/.local/state/organizador/logs/` | Registros |
