@@ -276,7 +276,7 @@ las que están mal y conviene repetir la evaluación tras limpiarlas.
 - [x] Modo automático solo mueve con confianza ≥ umbral; el resto queda pendiente.
 - [x] El servicio reinicia tras fallo (`Restart=on-failure`) y no duplica sugerencias.
 - [x] Llamadas D-Bus de prueba (listar, aceptar, deshacer) responden correctamente.
-- [ ] Prueba manual en CachyOS: notificación visible en KDE Plasma (Wayland).
+- [x] Prueba manual en CachyOS: notificación visible en KDE Plasma (Wayland).
 
 **Release `v0.2.0`**
 

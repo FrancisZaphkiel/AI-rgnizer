@@ -5,8 +5,10 @@ según [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
-Fase 3: aprendizaje de costumbres, desde la línea de comandos. La versión `v0.2.0` se
-publicará al cerrar la Fase 4 (vigilancia de Descargas), según el plan.
+## [0.2.0] — 2026-10-26
+
+Fases 3 y 4: aprendizaje de costumbres y vigilancia de Descargas como servicio de usuario
+con API D-Bus y notificaciones de KDE.
 
 ### Añadido
 
@@ -99,6 +101,5 @@ Primer hito: núcleo, acciones seguras y duplicados, desde la línea de comandos
 - Sin CI todavía: no hay remoto git configurado.
 - En un subvolumen Btrfs anidado distinto de `~`, la papelera es `<subvolumen>/.Trash-1000`,
   que Dolphin puede no mostrar.
-- En FAT/exFAT, la precisión de las fechas puede hacer que `undo` crea que el archivo cambió.
 - El pHash confunde capturas de pantalla distintas de una misma aplicación (por eso los
   similares son solo candidatos).
