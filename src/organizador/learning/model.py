@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import random
+import warnings
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
@@ -23,6 +24,7 @@ from typing import Any, Literal
 
 import numpy as np
 from scipy.optimize import minimize_scalar
+from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import SGDClassifier
 
 from organizador.core.config import LearningSettings
@@ -148,7 +150,11 @@ class DestinationModel:
             clf = _new_classifier()
             x = vectorizer.transform([e.features for e in subset])
             w = np.array([e.weight * weights[e.label] for e in subset])
-            clf.fit(x, [e.label for e in subset], sample_weight=w)
+            # Con max_iter acotado SGD avisa a menudo sin que el ajuste sea peor: se
+            # evalúa con «organizador evaluate», no con este aviso.
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", ConvergenceWarning)
+                clf.fit(x, [e.label for e in subset], sample_weight=w)
             return clf
 
         train, held = _split(examples)

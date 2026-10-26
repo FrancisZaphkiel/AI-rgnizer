@@ -25,8 +25,14 @@ from organizador.duplicates import (
     trash_similar,
 )
 from organizador.duplicates.names import NameGroup, SimilarNameFinder
+from organizador.features import extract_features
+from organizador.learning.dataset import Dataset, build_dataset, label_for
+from organizador.learning.evaluate import evaluate
+from organizador.learning.model import DestinationModel, NotEnoughDataError, Prediction
+from organizador.learning.store import IncompatibleModelError, ModelNotFoundError, ModelStore
 from organizador.scanner import Scanner, ScanStats
 from organizador.storage import Database
+from organizador.storage.models import Feedback
 
 log = logging.getLogger("organizador")
 
@@ -52,6 +58,9 @@ class AppContext:
         for outcome in service.recover():
             print(f"recuperada {outcome.action_id[:8]}: {outcome.state} — {outcome.detail}")
         return service
+
+    def models(self) -> ModelStore:
+        return ModelStore(self.paths.data_dir / "models", keep=self.settings.learning.keep_models)
 
 
 def _cmd_paths(_ctx: AppContext, _args: argparse.Namespace) -> int:
@@ -362,7 +371,190 @@ def _cmd_recover(ctx: AppContext, _args: argparse.Namespace) -> int:
     return 0
 
 
+# --- aprendizaje (Fase 3) ---------------------------------------------------------------
+
+
+def _learning_dataset(ctx: AppContext, args: argparse.Namespace) -> Dataset | None:
+    """Escanea (salvo ``--no-scan``) y construye el conjunto de datos; ``None`` si falla."""
+    roots = _resolve_roots(ctx, args)
+    if roots is None:
+        return None
+    if not args.no_scan and _cmd_scan(ctx, argparse.Namespace(roots=roots)) != 0:
+        return None
+    # Las carpetas vigiladas (Descargas) son lo que hay que organizar, no un ejemplo.
+    dataset = build_dataset(ctx.db, roots, ctx.settings.learning, exclude=ctx.settings.watched_dirs)
+    stats = dataset.stats
+    print(
+        f"{len(dataset.examples)} ejemplos en {len(dataset.labels)} carpetas "
+        f"({stats.feedback} correcciones); ignorados: {stats.in_projects} en "
+        f"{len(stats.project_dirs)} proyectos de software, {stats.duplicates} duplicados, "
+        f"{stats.small_classes} carpetas con menos de {ctx.settings.learning.min_examples} archivos"
+    )
+    return dataset
+
+
+def _cmd_train(ctx: AppContext, args: argparse.Namespace) -> int:
+    dataset = _learning_dataset(ctx, args)
+    if dataset is None:
+        return 2
+    try:
+        model = DestinationModel.train(dataset, ctx.settings.learning)
+    except NotEnoughDataError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    version = ctx.models().save(model)
+    print(f"Modelo {version} guardado: {len(model.classes)} carpetas, {len(model.rules)} reglas.")
+    for rule in sorted(model.rules.values(), key=lambda r: -r.support)[:10]:
+        print(f"  regla {rule.token} → {rule.label}  ({rule.hits}/{rule.support})")
+    return 0
+
+
+def _cmd_evaluate(ctx: AppContext, args: argparse.Namespace) -> int:
+    dataset = _learning_dataset(ctx, args)
+    if dataset is None:
+        return 2
+    try:
+        result = evaluate(dataset, ctx.settings.learning)
+    except NotEnoughDataError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(
+        f"Entrenado con {result.n_train}, evaluado con {result.n_test} archivos no vistos.\n"
+        f"  cobertura {result.coverage:.1%} (se abstiene en {result.abstention:.1%})\n"
+        f"  top-1 {result.top1_accuracy:.1%} · top-3 {result.top3_accuracy:.1%}"
+        f" (sobre las sugerencias no abstenidas)\n"
+        f"  {result.by_rule} decididas por regla, {result.by_rule_correct} correctas\n"
+        f"  error de calibración (ECE) {result.ece:.3f}"
+    )
+    print("  confianza    archivos  acierto")
+    for b in result.bins:
+        print(
+            f"  {b.low:.0%}–{b.high:.0%}  {b.count:>9}  {b.accuracy:>6.0%}"
+            f"  (dice {b.confidence:.0%})"
+        )
+    return 0
+
+
+def _load_model(ctx: AppContext) -> DestinationModel | None:
+    try:
+        return ctx.models().load()
+    except (ModelNotFoundError, IncompatibleModelError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return None
+
+
+def _print_prediction(path: Path, prediction: Prediction) -> None:
+    print(f"\n{path}")
+    if prediction.abstained:
+        print("  sin clasificar: ninguna carpeta es lo bastante probable")
+    for n, s in enumerate(prediction.suggestions, start=1):
+        marker = "→" if n == 1 and not prediction.abstained else " "
+        print(f"  {marker} {s.probability:>4.0%}  {s.label}")
+    if prediction.rule is not None:
+        r = prediction.rule
+        print(f"  regla: {r.hits} de {r.support} archivos con {r.token} están en esa carpeta")
+    elif prediction.reasons:
+        print("  por: " + ", ".join(token for token, _ in prediction.reasons))
+
+
+def _cmd_suggest(ctx: AppContext, args: argparse.Namespace) -> int:
+    model = _load_model(ctx)
+    if model is None:
+        return 1
+    files = [f for f in args.files if f.is_file()]
+    for missing in sorted(set(args.files) - set(files)):
+        print(f"error: no es un archivo: {missing}", file=sys.stderr)
+    for path, prediction in zip(
+        files, model.predict_many([extract_features(f) for f in files]), strict=True
+    ):
+        _print_prediction(path, prediction)
+    return 0 if len(files) == len(args.files) else 2
+
+
+def _cmd_teach(ctx: AppContext, args: argparse.Namespace) -> int:
+    path: Path = args.file.expanduser().resolve()
+    folder: Path = args.folder.expanduser().resolve()
+    if not path.is_file() or not folder.is_dir():
+        print("error: indica un archivo existente y una carpeta existente", file=sys.stderr)
+        return 2
+    model = _load_model(ctx)
+    if model is None:
+        return 1
+    # El modelo aprende carpetas a la profundidad de max_depth bajo las raíces indexadas.
+    roots = [r.expanduser().resolve() for r in ctx.settings.indexed_dirs]
+    label = label_for(folder / path.name, roots, ctx.settings.learning.max_depth) or str(folder)
+    features = extract_features(path)
+    prediction = model.predict(features)
+    suggested = prediction.best.label if prediction.best else None
+    with ctx.db.session() as s:
+        s.add(
+            Feedback(
+                file_path=str(path),
+                suggested=suggested,
+                chosen=label,
+                accepted=suggested == label,
+                confidence=prediction.suggestions[0].probability,
+                features=features.to_json(),
+            )
+        )
+    if model.learn(features, label):
+        version = ctx.models().save(model)
+        print(f"Aprendido: {path.name} → {label} (modelo {version})")
+    else:
+        print(
+            f"Anotado: {label} es una carpeta nueva para el modelo; "
+            "se tendrá en cuenta en el próximo «organizador train»."
+        )
+    return 0
+
+
+def _cmd_model(ctx: AppContext, args: argparse.Namespace) -> int:
+    store = ctx.models()
+    if args.action == "revert":
+        try:
+            store.revert(args.version)
+        except (ModelNotFoundError, IncompatibleModelError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(f"Modelo activo: {args.version}")
+        return 0
+    infos = store.list()
+    if not infos:
+        print("No hay modelos entrenados: ejecuta «organizador train».")
+    for info in infos:
+        when = info.trained_at.astimezone().strftime("%Y-%m-%d %H:%M")
+        mark = "*" if info.current else " "
+        print(
+            f"{mark} {info.version:>4}  {when}  {info.n_examples} ejemplos, "
+            f"{info.n_classes} carpetas, {info.n_rules} reglas"
+        )
+    return 0
+
+
 Command = Callable[[AppContext, argparse.Namespace], int]
+
+
+def _add_learning_commands(add: Callable[[str, Command, str], argparse.ArgumentParser]) -> None:
+    for name, func, help_text in (
+        ("train", _cmd_train, "aprende dónde guardas cada tipo de archivo"),
+        ("evaluate", _cmd_evaluate, "mide la precisión del modelo con archivos que no vio"),
+    ):
+        p = add(name, func, help_text)
+        p.add_argument("roots", nargs="*", type=Path)
+        p.add_argument("--no-scan", action="store_true", help="usa el índice sin reescanear")
+
+    p = add("suggest", _cmd_suggest, "sugiere carpetas para archivos (no los mueve)")
+    p.add_argument("files", nargs="+", type=Path)
+
+    p = add("teach", _cmd_teach, "corrige al modelo: ARCHIVO va en CARPETA (no lo mueve)")
+    p.add_argument("file", type=Path)
+    p.add_argument("folder", type=Path)
+
+    p = add("model", _cmd_model, "versiones del modelo")
+    model_sub = p.add_subparsers(dest="action", required=True)
+    model_sub.add_parser("list", help="lista las versiones guardadas")
+    revert = model_sub.add_parser("revert", help="vuelve a una versión anterior")
+    revert.add_argument("version", type=int)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -417,6 +609,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="0-100",
         help="parecido mínimo entre nombres (por defecto 90)",
     )
+
+    _add_learning_commands(add)
 
     p = add("mv", _cmd_mv, "mueve un archivo a una carpeta (sin sobrescribir)")
     p.add_argument("source", type=Path)
