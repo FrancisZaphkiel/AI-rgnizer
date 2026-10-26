@@ -30,6 +30,11 @@ según [SemVer](https://semver.org/lang/es/).
 
 ### Corregido
 
+- Servicio: no arrancaba con un índice grande (16 000 carpetas): calcular las carpetas
+  destino tardaba ~100 s por comparar rutas con `Path.is_relative_to` y systemd lo mataba
+  a los 15 s. Ahora se comparan como texto (`FolderSet`): 1 s. La unidad admite 90 s de
+  arranque (`TimeoutStartSec`).
+
 - Duplicados: las copias en carpetas sin permiso de escritura (p. ej. de root, clonadas
   con sudo) ya no se proponen para la papelera; si hay alguna, es la que se conserva, y
   un grupo sin nada que quitar no se muestra. La papelera explica «No tienes permiso para

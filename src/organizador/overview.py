@@ -13,6 +13,7 @@ from pathlib import Path
 from sqlalchemy import func, not_, select
 
 from organizador.app import AppContext, duplicate_exclude, folder_pattern, learning_exclude
+from organizador.core.paths import FolderSet
 from organizador.learning.dataset import find_project_dirs
 from organizador.learning.patterns import FolderPattern
 from organizador.learning.store import ModelInfo
@@ -162,11 +163,15 @@ def pattern_rows(ctx: AppContext) -> list[FolderPatternRow]:
     names: dict[str, list[str]] = {}
     for folder, name in rows:
         names.setdefault(folder, []).append(name)
-    skipped = [p.expanduser().resolve() for p in learning_exclude(ctx)]
-    skipped += [Path(p) for p in find_project_dirs(ctx.db, roots)] if roots else []
+    skipped = FolderSet(
+        [
+            *(p.expanduser().resolve() for p in learning_exclude(ctx)),
+            *(find_project_dirs(ctx.db, roots) if roots else []),
+        ]
+    )
     out: list[FolderPatternRow] = []
     for folder in sorted(set(names) | set(edited)):
-        if any(Path(folder).is_relative_to(p) for p in skipped):
+        if folder in skipped:
             continue
         found = folder_pattern(ctx, folder, names.get(folder, []))
         row = edited.get(folder)

@@ -32,7 +32,7 @@ from organizador.app import (
 )
 from organizador.backend import Backend, open_backend
 from organizador.core.config import set_config_value
-from organizador.core.paths import AppPaths
+from organizador.core.paths import AppPaths, FolderSet
 from organizador.downloads import (
     DownloadMonitor,
     Outcome,
@@ -635,10 +635,10 @@ def _cmd_patterns(ctx: AppContext, args: argparse.Namespace) -> int:
     if not args.no_scan and _cmd_scan(ctx, argparse.Namespace(roots=roots)) != 0:
         return 1
     skipped = [*learning_exclude(ctx), *map(Path, find_project_dirs(ctx.db, roots))]
-    skipped = [p.expanduser().resolve() for p in skipped]
+    excluded = FolderSet(p.expanduser().resolve() for p in skipped)
     shown = 0
     for folder, names in sorted(_names_by_folder(ctx, roots).items()):
-        if any(Path(folder).is_relative_to(p) for p in skipped):
+        if folder in excluded:
             continue
         if (found := folder_pattern(ctx, folder, names)) is not None:
             _print_pattern(folder, found)
