@@ -106,23 +106,66 @@ class _Row:
     normalized: str
 
 
-def _neighbours(names: Sequence[str], min_score: int) -> list[list[tuple[int, int]]]:
-    """Para cada nombre, los (índice, puntuación) de los demás con puntuación ≥ ``min_score``."""
-    result: list[list[tuple[int, int]]] = [[] for _ in names]
-    for start in range(0, len(names), _ROWS_PER_CHUNK):
-        chunk = names[start : start + _ROWS_PER_CHUNK]
+# Margen del filtro previo entre claves de serie: «informe 2024» y «informe 2025 final»
+# se parecen algo menos sin los números que con ellos.
+_KEY_MARGIN = 10
+
+
+def _cdist_pairs(
+    rows: Sequence[str], cols: Sequence[str], min_score: int
+) -> list[tuple[int, int, int]]:
+    """(fila, columna, puntuación) de los pares con puntuación ≥ ``min_score``."""
+    pairs: list[tuple[int, int, int]] = []
+    for start in range(0, len(rows), _ROWS_PER_CHUNK):
         scores = process.cdist(
-            chunk,
-            names,
+            rows[start : start + _ROWS_PER_CHUNK],
+            cols,
             scorer=fuzz.token_sort_ratio,
             score_cutoff=min_score,
             dtype=np.uint8,
             workers=-1,
         )
-        for row, col in zip(*np.nonzero(scores), strict=True):
-            i, j = start + int(row), int(col)
-            if i != j and not is_series(names[i], names[j]):
-                result[i].append((j, int(scores[row, col])))
+        pairs.extend(
+            (start + int(r), int(c), int(scores[r, c]))
+            for r, c in zip(*np.nonzero(scores), strict=True)
+        )
+    return pairs
+
+
+def _neighbours(names: Sequence[str], min_score: int) -> list[list[tuple[int, int]]]:
+    """Para cada nombre, los (índice, puntuación) de los demás con puntuación ≥ ``min_score``.
+
+    Las series (mismo nombre salvo los números) nunca se comparan: en una carpeta de
+    capturas o de fotos numeradas casi todos los pares lo son y la comparación sería
+    cuadrática. Se agrupan los nombres por clave de serie; dentro de una clave solo
+    cuentan los nombres idénticos, y entre claves solo se comparan nombre a nombre las
+    claves que ya se parecen entre sí.
+    """
+    by_key: dict[str, list[int]] = defaultdict(list)
+    for i, name in enumerate(names):
+        by_key[series_key(name)].append(i)
+    keys = list(by_key)
+    result: list[list[tuple[int, int]]] = [[] for _ in names]
+
+    for members in by_key.values():
+        same_name: dict[str, list[int]] = defaultdict(list)
+        for i in members:
+            same_name[names[i]].append(i)
+        for group in same_name.values():
+            for i in group:
+                result[i].extend((j, 100) for j in group if j != i)
+
+    for a, b, _ in _cdist_pairs(keys, keys, max(0, min_score - _KEY_MARGIN)):
+        if a >= b:  # cada par de claves una sola vez, sin la diagonal
+            continue
+        left, right = by_key[keys[a]], by_key[keys[b]]
+        for r, c, score in _cdist_pairs(
+            [names[i] for i in left], [names[j] for j in right], min_score
+        ):
+            result[left[r]].append((right[c], score))
+            result[right[c]].append((left[r], score))
+    for neighbours in result:
+        neighbours.sort()
     return result
 
 

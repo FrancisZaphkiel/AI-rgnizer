@@ -32,15 +32,13 @@ from sqlalchemy.orm import Session
 from organizador.core.config import DuplicateSettings
 from organizador.duplicates import hashing
 from organizador.duplicates.birthtime import birth_time_ns
-from organizador.duplicates.index import store_if_unchanged
+from organizador.duplicates.index import IndexWriter
 from organizador.duplicates.keep import KeepPolicy
 from organizador.duplicates.space import disk_usage
 from organizador.storage import Database
 from organizador.storage.models import Directory, File
 
 log = logging.getLogger(__name__)
-
-COMMIT_EVERY_FILES = 200
 
 InodeKey = tuple[int, int]  # (dispositivo, inode)
 HashKind = Literal["partial", "full"]
@@ -211,6 +209,7 @@ class DuplicateFinder:
         with self._db.new_session() as session:
             job = _FindJob(self._settings, session, report.stats, cancel, progress)
             confirmed = job.run(resolved)
+            job.writer.flush()
             session.commit()
         if not report.stats.cancelled:
             report.groups = [self._build_group(h, members) for h, members in confirmed.items()]
@@ -264,7 +263,7 @@ class _FindJob:
         self.stats = stats
         self.cancel = cancel
         self.progress = progress
-        self._pending_writes = 0
+        self.writer = IndexWriter(session)
 
     def run(self, roots: Sequence[Path]) -> dict[str, list[_Candidate]]:
         by_size = self.load_candidates(roots)
@@ -403,10 +402,4 @@ class _FindJob:
 
     def store(self, links: list[_Candidate], kind: HashKind, digest: str) -> None:
         column = "partial_hash" if kind == "partial" else "content_hash"
-        store_if_unchanged(
-            self.session, [c.file_id for c in links], links[0].signature, {column: digest}
-        )
-        self._pending_writes += 1
-        if self._pending_writes >= COMMIT_EVERY_FILES:
-            self.session.commit()
-            self._pending_writes = 0
+        self.writer.queue([c.file_id for c in links], links[0].signature, {column: digest})

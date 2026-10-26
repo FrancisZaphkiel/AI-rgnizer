@@ -172,3 +172,23 @@ def test_leading_ellipsis_files_are_indexed(db: Database, tmp_path: Path) -> Non
     (root / ".directory").write_text("[Dolphin]", encoding="utf-8")
     Scanner(db, ScanSettings(), mounts=()).scan(root)
     assert _indexed_names(db) == {"... Baby One More Time.mp3"}
+
+
+def test_newly_excluded_names_leave_the_index(db: Database, tree: Path) -> None:
+    Scanner(db, ScanSettings(), mounts=()).scan(tree)
+    assert "notas.txt" in _indexed_names(db)
+    settings = ScanSettings(excluded_globs=["*.txt"])
+    stats = Scanner(db, settings, mounts=()).scan(tree)
+    assert "notas.txt" not in _indexed_names(db)
+    assert stats.files_removed == 1
+
+
+def test_removed_subdirectory_counts_its_files(db: Database, tree: Path) -> None:
+    import shutil
+
+    scanner = Scanner(db, ScanSettings(), mounts=())
+    scanner.scan(tree)
+    shutil.rmtree(tree / "Documentos/Banco")  # noqa: TID251 - árbol de prueba
+    stats = scanner.scan(tree)
+    assert stats.files_removed == 1
+    assert "2024-05_cartola.pdf" not in _indexed_names(db)

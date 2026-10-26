@@ -28,8 +28,8 @@ from sqlalchemy.orm import Session
 
 from organizador.core.config import DuplicateSettings
 from organizador.duplicates import hashing
-from organizador.duplicates.finder import COMMIT_EVERY_FILES, birth_or_none, under_roots
-from organizador.duplicates.index import store_if_unchanged
+from organizador.duplicates.finder import birth_or_none, under_roots
+from organizador.duplicates.index import IndexWriter
 from organizador.duplicates.keep import KeepChoice, KeepPolicy
 from organizador.storage import Database
 from organizador.storage.models import IMAGE_UNREADABLE, Directory, File
@@ -246,6 +246,7 @@ class SimilarImageFinder:
             if not report.stats.cancelled:
                 clusters = cluster([i.perceptual_hash or "" for i in images], self._max_distance)
                 report.groups = [g for c in clusters if (g := job.build(images, c, self._policy))]
+            job.writer.flush()
             session.commit()
         report.groups.sort(key=lambda g: (-g.redundant_bytes, str(g.keep.path)))
         log.info("Búsqueda de imágenes similares en %s: %s", resolved, report.stats)
@@ -270,7 +271,7 @@ class _SimilarJob:
         self.stats = stats
         self.cancel = cancel
         self.progress = progress
-        self._pending_writes = 0
+        self.writer = IndexWriter(session)
 
     def cancelled(self) -> bool:
         if self.cancel is not None and self.cancel.is_set():
@@ -372,11 +373,7 @@ class _SimilarJob:
         return ok
 
     def store(self, image: _Image, values: dict[str, object]) -> None:
-        store_if_unchanged(self.session, [image.file_id], image.signature, values)
-        self._pending_writes += 1
-        if self._pending_writes >= COMMIT_EVERY_FILES:
-            self.session.commit()
-            self._pending_writes = 0
+        self.writer.queue([image.file_id], image.signature, values)
 
     def build(
         self, images: Sequence[_Image], members: Sequence[int], policy: KeepPolicy
