@@ -11,6 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol, Self
 
+from sqlalchemy import func, select
+
 from organizador import __version__
 from organizador.actions import ActionError, ActionService
 from organizador.core.config import Settings, load_settings
@@ -25,8 +27,9 @@ from organizador.duplicates import (
     trash_similar,
 )
 from organizador.duplicates.names import NameGroup, SimilarNameFinder
-from organizador.features import extract_features
+from organizador.features import FileFeatures, extract_features
 from organizador.learning.dataset import Dataset, build_dataset, label_for
+from organizador.learning.decide import decide, decide_many
 from organizador.learning.evaluate import evaluate
 from organizador.learning.model import DestinationModel, NotEnoughDataError, Prediction
 from organizador.learning.store import IncompatibleModelError, ModelNotFoundError, ModelStore
@@ -331,8 +334,15 @@ def _cmd_names(ctx: AppContext, args: argparse.Namespace) -> int:
 
 
 def _cmd_mv(ctx: AppContext, args: argparse.Namespace) -> int:
-    result = ctx.actions().move(args.source, args.dest_dir)
+    dest_dir: Path = args.dest_dir.expanduser()
+    if args.parents:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+    # Características antes de mover: describen el archivo tal como llegó.
+    features = extract_features(args.source) if args.learn and args.source.is_file() else None
+    result = ctx.actions().move(args.source, dest_dir)
     print(f"{result.action_id[:8]}  {result.source} → {result.destination}")
+    if features is not None:
+        _record_choice(ctx, result.destination, result.destination.parent.resolve(), features)
     return 0
 
 
@@ -382,7 +392,8 @@ def _learning_dataset(ctx: AppContext, args: argparse.Namespace) -> Dataset | No
     if not args.no_scan and _cmd_scan(ctx, argparse.Namespace(roots=roots)) != 0:
         return None
     # Las carpetas vigiladas (Descargas) son lo que hay que organizar, no un ejemplo.
-    dataset = build_dataset(ctx.db, roots, ctx.settings.learning, exclude=ctx.settings.watched_dirs)
+    exclude = [*ctx.settings.watched_dirs, *map(Path, ctx.settings.learning.exclude)]
+    dataset = build_dataset(ctx.db, roots, ctx.settings.learning, exclude=exclude)
     stats = dataset.stats
     print(
         f"{len(dataset.examples)} ejemplos en {len(dataset.labels)} carpetas "
@@ -435,56 +446,78 @@ def _cmd_evaluate(ctx: AppContext, args: argparse.Namespace) -> int:
     return 0
 
 
-def _load_model(ctx: AppContext) -> DestinationModel | None:
-    try:
-        return ctx.models().load()
-    except (ModelNotFoundError, IncompatibleModelError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return None
+_SOURCE_TEXT = {
+    "configuración": "por tu regla en config.toml",
+    "regla": "aprendido",
+    "modelo": "sugerencia del modelo",
+    "tipo": "destino por defecto para este tipo de archivo",
+}
 
 
 def _print_prediction(path: Path, prediction: Prediction) -> None:
     print(f"\n{path}")
     if prediction.abstained:
-        print("  sin clasificar: ninguna carpeta es lo bastante probable")
+        print("  sin clasificar: se queda donde está (muévelo con «organizador mv» y aprenderé)")
     for n, s in enumerate(prediction.suggestions, start=1):
-        marker = "→" if n == 1 and not prediction.abstained else " "
-        print(f"  {marker} {s.probability:>4.0%}  {s.label}")
+        first = n == 1 and not prediction.abstained
+        marker = "→" if first else " "
+        shown = "  —" if first and prediction.source in {"configuración", "tipo"} else ""
+        print(f"  {marker} {shown or f'{s.probability:>4.0%}'}  {s.label}")
+    if prediction.abstained:
+        return
+    detail = _SOURCE_TEXT[prediction.source]
     if prediction.rule is not None:
         r = prediction.rule
-        print(f"  regla: {r.hits} de {r.support} archivos con {r.token} están en esa carpeta")
+        detail += f": {r.hits} de {r.support} archivos con {r.token} están en esa carpeta"
     elif prediction.reasons:
-        print("  por: " + ", ".join(token for token, _ in prediction.reasons))
+        detail += " (" + ", ".join(token for token, _ in prediction.reasons) + ")"
+    print(f"  {detail}")
+
+
+def _load_model(ctx: AppContext) -> DestinationModel | None:
+    """Modelo activo; sin él solo se usan las reglas de config.toml y los destinos por tipo."""
+    try:
+        return ctx.models().load()
+    except (ModelNotFoundError, IncompatibleModelError) as exc:
+        print(f"aviso: {exc}; solo se usan tus reglas y los destinos por tipo", file=sys.stderr)
+        return None
 
 
 def _cmd_suggest(ctx: AppContext, args: argparse.Namespace) -> int:
     model = _load_model(ctx)
-    if model is None:
-        return 1
     files = [f for f in args.files if f.is_file()]
     for missing in sorted(set(args.files) - set(files)):
         print(f"error: no es un archivo: {missing}", file=sys.stderr)
+    features = [extract_features(f) for f in files]
     for path, prediction in zip(
-        files, model.predict_many([extract_features(f) for f in files]), strict=True
+        files, decide_many(features, model, ctx.settings.learning), strict=True
     ):
         _print_prediction(path, prediction)
     return 0 if len(files) == len(args.files) else 2
 
 
-def _cmd_teach(ctx: AppContext, args: argparse.Namespace) -> int:
-    path: Path = args.file.expanduser().resolve()
-    folder: Path = args.folder.expanduser().resolve()
-    if not path.is_file() or not folder.is_dir():
-        print("error: indica un archivo existente y una carpeta existente", file=sys.stderr)
-        return 2
-    model = _load_model(ctx)
-    if model is None:
-        return 1
+def _retrain_from_index(ctx: AppContext) -> int | None:
+    """Reentrena con lo ya indexado (sin escanear); devuelve la versión o ``None``."""
+    roots = [r.expanduser() for r in ctx.settings.indexed_dirs if r.expanduser().is_dir()]
+    if not roots:
+        return None
+    exclude = [*ctx.settings.watched_dirs, *map(Path, ctx.settings.learning.exclude)]
+    dataset = build_dataset(ctx.db, roots, ctx.settings.learning, exclude=exclude)
+    try:
+        model = DestinationModel.train(dataset, ctx.settings.learning)
+    except NotEnoughDataError:
+        return None
+    return ctx.models().save(model)
+
+
+def _record_choice(ctx: AppContext, path: Path, folder: Path, features: FileFeatures) -> None:
+    """Registra que ``path`` va en ``folder`` y hace que el modelo lo aprenda."""
+    learning = ctx.settings.learning
     # El modelo aprende carpetas a la profundidad de max_depth bajo las raíces indexadas.
     roots = [r.expanduser().resolve() for r in ctx.settings.indexed_dirs]
-    label = label_for(folder / path.name, roots, ctx.settings.learning.max_depth) or str(folder)
-    features = extract_features(path)
-    prediction = model.predict(features)
+    label = label_for(folder / path.name, roots, learning.max_depth) or str(folder)
+    model = _load_model(ctx) if ctx.models().current_version() else None
+    prediction = decide(features, model, learning)
     suggested = prediction.best.label if prediction.best else None
     with ctx.db.session() as s:
         s.add(
@@ -493,18 +526,35 @@ def _cmd_teach(ctx: AppContext, args: argparse.Namespace) -> int:
                 suggested=suggested,
                 chosen=label,
                 accepted=suggested == label,
-                confidence=prediction.suggestions[0].probability,
+                confidence=prediction.suggestions[0].probability
+                if prediction.suggestions
+                else None,
                 features=features.to_json(),
             )
         )
-    if model.learn(features, label):
-        version = ctx.models().save(model)
-        print(f"Aprendido: {path.name} → {label} (modelo {version})")
-    else:
-        print(
-            f"Anotado: {label} es una carpeta nueva para el modelo; "
-            "se tendrá en cuenta en el próximo «organizador train»."
+        s.flush()
+        pending = s.scalar(
+            select(func.count()).select_from(Feedback).where(Feedback.chosen == label)
         )
+    if model is not None and model.learn(features, label):
+        print(f"  aprendido: {path.name} → {label} (modelo {ctx.models().save(model)})")
+        return
+    if (pending or 0) >= learning.retrain_after and (version := _retrain_from_index(ctx)):
+        print(f"  {label}: {pending} archivos elegidos, reentrenado (modelo {version})")
+        return
+    print(
+        f"  anotado: {path.name} → {label}; "
+        f"lo aprenderé tras {learning.retrain_after} archivos o con «organizador train»"
+    )
+
+
+def _cmd_teach(ctx: AppContext, args: argparse.Namespace) -> int:
+    path: Path = args.file.expanduser().resolve()
+    folder: Path = args.folder.expanduser().resolve()
+    if not path.is_file() or not folder.is_dir():
+        print("error: indica un archivo existente y una carpeta existente", file=sys.stderr)
+        return 2
+    _record_choice(ctx, path, folder, extract_features(path))
     return 0
 
 
@@ -535,11 +585,11 @@ Command = Callable[[AppContext, argparse.Namespace], int]
 
 
 def _add_learning_commands(add: Callable[[str, Command, str], argparse.ArgumentParser]) -> None:
-    for name, func, help_text in (
+    for name, command, help_text in (
         ("train", _cmd_train, "aprende dónde guardas cada tipo de archivo"),
         ("evaluate", _cmd_evaluate, "mide la precisión del modelo con archivos que no vio"),
     ):
-        p = add(name, func, help_text)
+        p = add(name, command, help_text)
         p.add_argument("roots", nargs="*", type=Path)
         p.add_argument("--no-scan", action="store_true", help="usa el índice sin reescanear")
 
@@ -612,9 +662,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     _add_learning_commands(add)
 
-    p = add("mv", _cmd_mv, "mueve un archivo a una carpeta (sin sobrescribir)")
+    p = add("mv", _cmd_mv, "mueve un archivo a una carpeta (sin sobrescribir) y lo aprende")
     p.add_argument("source", type=Path)
     p.add_argument("dest_dir", type=Path)
+    p.add_argument("-p", "--parents", action="store_true", help="crea la carpeta si no existe")
+    p.add_argument(
+        "--no-learn", dest="learn", action="store_false", help="no aprender de este movimiento"
+    )
 
     p = add("rename", _cmd_rename, "renombra un archivo")
     p.add_argument("source", type=Path)

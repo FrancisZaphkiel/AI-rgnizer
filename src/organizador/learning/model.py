@@ -53,11 +53,15 @@ class Suggestion:
     probability: float
 
 
+# De dónde sale la primera sugerencia (ver ``decide.py`` para el orden de prioridad).
+Source = Literal["configuración", "regla", "modelo", "tipo"]
+
+
 @dataclass(frozen=True, slots=True)
 class Prediction:
     suggestions: tuple[Suggestion, ...]
     abstained: bool
-    source: Literal["regla", "modelo"]
+    source: Source
     rule: Rule | None
     # Tokens del archivo que más empujan hacia la primera sugerencia, con su peso.
     reasons: tuple[tuple[str, float], ...]
@@ -216,7 +220,7 @@ class DestinationModel:
                 suggestions = [Suggestion(rule.label, rule.purity)] + [
                     Suggestion(label, (1 - rule.purity) * p / mass) for label, p in rest
                 ]
-                source: Literal["regla", "modelo"] = "regla"
+                source: Source = "regla"
             else:
                 suggestions = [Suggestion(classes[i], float(row[i])) for i in order]
                 source = "modelo"

@@ -11,7 +11,7 @@ from typing import Any
 
 import tomli_w
 
-from organizador.core.paths import AppPaths, downloads_dir
+from organizador.core.paths import AppPaths, downloads_dir, user_dir
 
 log = logging.getLogger(__name__)
 
@@ -54,6 +54,21 @@ class DuplicateSettings:
     image_max_distance: int = 4
 
 
+def default_type_destinations() -> dict[str, str]:
+    """Destino inicial por tipo de archivo: las carpetas de usuario XDG."""
+    folders = {
+        "tipo:image": ("PICTURES", "Pictures"),
+        "tipo:video": ("VIDEOS", "Videos"),
+        "tipo:audio": ("MUSIC", "Music"),
+        "ext:pdf": ("DOCUMENTS", "Documents"),
+        "tipo:text": ("DOCUMENTS", "Documents"),
+    }
+    return {
+        token: str(user_dir(key) or Path.home() / fallback)
+        for token, (key, fallback) in folders.items()
+    }
+
+
 @dataclass(slots=True)
 class LearningSettings:
     # Clase = carpeta destino truncada a esta profundidad bajo su raíz indexada.
@@ -71,6 +86,15 @@ class LearningSettings:
     feedback_weight: float = 5.0
     # Versiones del modelo que se conservan para poder revertir.
     keep_models: int = 5
+    # Correcciones hacia una carpeta nueva que disparan un reentrenamiento automático.
+    retrain_after: int = 3
+    # Reglas del usuario «token → carpeta» (p. ej. "ext:jpg" = "~/Imágenes"): mandan
+    # sobre todo lo aprendido. Se comprueban en el orden en que aparecen.
+    rules: dict[str, str] = field(default_factory=dict)
+    # Último recurso antes de «sin clasificar»: carpeta por tipo de archivo.
+    type_destinations: dict[str, str] = field(default_factory=default_type_destinations)
+    # Carpetas que no reflejan costumbres del usuario (salidas de programas, etc.).
+    exclude: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
