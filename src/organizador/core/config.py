@@ -48,6 +48,10 @@ class DuplicateSettings:
     min_size: int = 1
     # Bytes leídos del principio y del final para el hash parcial (solo filtro).
     partial_bytes: int = 64 * 1024
+    # Distancia de Hamming máxima entre pHash de 64 bits para proponer imágenes similares.
+    # Calibrado: redimensionar o recomprimir da ≤ 2; fotos distintas, ≥ 20; capturas de
+    # pantalla distintas de una misma aplicación, desde 0 (por eso son solo candidatos).
+    image_max_distance: int = 4
 
 
 @dataclass(slots=True)

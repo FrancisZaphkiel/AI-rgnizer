@@ -253,6 +253,9 @@ class _ScanJob:
             # Invalidación conservadora: cualquier cambio anula los hashes.
             row.partial_hash = None
             row.content_hash = None
+            row.perceptual_hash = None
+            row.image_width = None
+            row.image_height = None
             row.mime = None
             stats.files_changed += 1
 

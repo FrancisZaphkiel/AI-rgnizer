@@ -80,9 +80,16 @@ class File(Base):
     # Hashes de contenido; se invalidan (None) ante cualquier cambio de metadatos.
     partial_hash: Mapped[str | None] = mapped_column(String(64))
     content_hash: Mapped[str | None] = mapped_column(String(64), index=True)
+    # Imágenes: pHash en hex (o IMAGE_UNREADABLE si no se pudo decodificar) y resolución.
+    perceptual_hash: Mapped[str | None] = mapped_column(String(16))
+    image_width: Mapped[int | None] = mapped_column(Integer)
+    image_height: Mapped[int | None] = mapped_column(Integer)
     last_seen_scan: Mapped[int] = mapped_column(Integer, index=True)
 
     directory: Mapped[Directory] = relationship(back_populates="files")
+
+
+IMAGE_UNREADABLE = "!"
 
 
 class ScanRun(Base):

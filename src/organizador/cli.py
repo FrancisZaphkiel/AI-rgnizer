@@ -8,12 +8,21 @@ import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any, Protocol, Self
 
 from organizador import __version__
 from organizador.actions import ActionError, ActionService
 from organizador.core.config import Settings, load_settings
 from organizador.core.paths import AppPaths
-from organizador.duplicates import DuplicateFinder, DuplicateGroup, KeepPolicy, trash_redundant
+from organizador.duplicates import (
+    DuplicateFinder,
+    DuplicateGroup,
+    KeepPolicy,
+    SimilarGroup,
+    SimilarImageFinder,
+    trash_redundant,
+    trash_similar,
+)
 from organizador.scanner import Scanner, ScanStats
 from organizador.storage import Database
 
@@ -112,11 +121,23 @@ def _print_group(index: int, group: DuplicateGroup) -> None:
         print(f"  [{n}] {label:<9} {f.path}{note}")
 
 
-def _ask_group(group: DuplicateGroup) -> DuplicateGroup | None:
-    """Confirmación por grupo: s = enviar sobrantes, n = saltar, número = conservar otra."""
+class _Group(Protocol):
+    """Lo común a ``DuplicateGroup`` y ``SimilarGroup`` (miembros con atributo ``path``)."""
+
+    @property
+    def files(self) -> tuple[Any, ...]: ...
+
+    @property
+    def keep(self) -> Any: ...
+
+    def with_keep(self, keep: Any) -> Self: ...
+
+
+def _ask_group[G: _Group](group: G, question: str) -> G | None:
+    """Confirmación por grupo: s = aceptar, n = saltar, número = conservar otro archivo."""
     while True:
         try:
-            answer = input("  ¿Enviar las copias sobrantes a la papelera? [s/N/nº a conservar] ")
+            answer = input(f"  {question} [s/N/nº a conservar] ")
         except EOFError:
             return None
         answer = answer.strip().lower()
@@ -139,7 +160,7 @@ def _trash_groups(
         group: DuplicateGroup | None = proposed
         if not assume_yes:
             _print_group(index, proposed)
-            group = _ask_group(proposed)
+            group = _ask_group(proposed, "¿Enviar las copias sobrantes a la papelera?")
         if group is None:
             continue
         try:
@@ -193,6 +214,80 @@ def _cmd_dupes(ctx: AppContext, args: argparse.Namespace) -> int:
         return 0
 
     return _trash_groups(ctx.actions(), report.groups, assume_yes=args.yes)
+
+
+def _print_similar(index: int, group: SimilarGroup) -> None:
+    print(
+        f"\nCandidato {index} · {len(group.files)} imágenes parecidas · "
+        f"ocupan {human_size(group.redundant_bytes)} además de la conservada"
+    )
+    for n, f in enumerate(group.files, start=1):
+        label = "conservar" if f is group.keep else "parecida"
+        detail = f"{f.width}×{f.height}, {human_size(f.size)}"
+        if f is group.keep:
+            detail += f"; {group.keep_reason}"
+        else:
+            detail += f"; distancia {group.distance_to_keep(f)}"
+        print(f"  [{n}] {label:<9} {f.path}  ({detail})")
+
+
+def _trash_similar_groups(service: ActionService, groups: Sequence[SimilarGroup]) -> int:
+    # Sin --yes a propósito: cada grupo de similares exige una confirmación explícita.
+    failures = trashed = 0
+    for index, proposed in enumerate(groups, start=1):
+        _print_similar(index, proposed)
+        print("  Abre las imágenes y compáralas antes de confirmar: no son idénticas.")
+        group = _ask_group(proposed, "¿Enviar a la papelera todas menos la conservada?")
+        if group is None:
+            continue
+        try:
+            result = trash_similar(group.confirm(), service)
+        except ActionError as exc:
+            print(f"  grupo {index} omitido: {exc}", file=sys.stderr)
+            failures += 1
+            continue
+        for action in result.trashed:
+            print(f"  {action.action_id[:8]}  {action.source} → papelera")
+        for item, error in result.failed:
+            print(f"  error con {item.path}: {error}", file=sys.stderr)
+        failures += len(result.failed)
+        trashed += len(result.trashed)
+    if trashed:
+        print(f"{trashed} archivos enviados a la papelera. Para restaurar uno: organizador undo ID")
+    return 1 if failures else 0
+
+
+def _cmd_similar(ctx: AppContext, args: argparse.Namespace) -> int:
+    roots = _resolve_roots(ctx, args)
+    if roots is None:
+        return 2
+    if not args.no_scan and _cmd_scan(ctx, argparse.Namespace(roots=roots)) != 0:
+        return 1
+
+    settings = ctx.settings
+    duplicates = settings.duplicates
+    if args.max_distance is not None:
+        duplicates = replace(duplicates, image_max_distance=args.max_distance)
+    policy = KeepPolicy(settings.indexed_dirs, settings.watched_dirs)
+    try:
+        report = SimilarImageFinder(ctx.db, duplicates, policy).find(roots)
+    except KeyboardInterrupt:
+        print("\nbúsqueda cancelada", file=sys.stderr)
+        return 130
+
+    if not args.trash:
+        for index, group in enumerate(report.groups, start=1):
+            _print_similar(index, group)
+    stats = report.stats
+    print(
+        f"\n{len(report.groups)} grupos de imágenes similares (candidatos: revísalos antes de "
+        f"borrar) entre {stats.images} imágenes; {stats.hashed} analizadas ahora, "
+        f"{stats.unreadable} no legibles."
+    )
+    if not args.trash:
+        return 0
+
+    return _trash_similar_groups(ctx.actions(), report.groups)
 
 
 def _cmd_mv(ctx: AppContext, args: argparse.Namespace) -> int:
@@ -265,6 +360,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--trash", action="store_true", help="ofrece enviar las copias sobrantes a la papelera"
     )
     p.add_argument("--yes", action="store_true", help="con --trash, no pide confirmación")
+
+    p = add("similar", _cmd_similar, "busca imágenes casi idénticas (candidatos a revisar)")
+    p.add_argument("roots", nargs="*", type=Path)
+    p.add_argument("--no-scan", action="store_true", help="usa el índice sin reescanear")
+    p.add_argument(
+        "--max-distance",
+        type=int,
+        metavar="BITS",
+        help="distancia de Hamming máxima entre pHash (0-64; por defecto, la de config.toml)",
+    )
+    p.add_argument(
+        "--trash",
+        action="store_true",
+        help="pregunta grupo por grupo si enviar las parecidas a la papelera",
+    )
 
     p = add("mv", _cmd_mv, "mueve un archivo a una carpeta (sin sobrescribir)")
     p.add_argument("source", type=Path)
