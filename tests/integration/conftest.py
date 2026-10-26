@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from organizador.actions import ActionService
-from organizador.core.config import ActionSettings
-from organizador.storage import Database
+from airgnizer.actions import ActionService
+from airgnizer.core.config import ActionSettings
+from airgnizer.storage import Database
 
 
 @pytest.fixture

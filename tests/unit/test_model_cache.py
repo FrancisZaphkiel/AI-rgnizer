@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from organizador.app import AppContext, load_model
-from organizador.learning.store import ModelStore
+from airgnizer.app import AppContext, load_model
+from airgnizer.learning.store import ModelStore
 
 
 def test_active_model_is_loaded_once_until_it_changes(

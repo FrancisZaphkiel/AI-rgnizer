@@ -7,11 +7,11 @@ from pathlib import Path
 import pytest
 from sqlalchemy import func, select
 
-from organizador.core.config import ScanSettings
-from organizador.scanner import Scanner
-from organizador.scanner.mounts import mount_points
-from organizador.storage import Database
-from organizador.storage.models import Directory, File, ScanError
+from airgnizer.core.config import ScanSettings
+from airgnizer.scanner import Scanner
+from airgnizer.scanner.mounts import mount_points
+from airgnizer.storage import Database
+from airgnizer.storage.models import Directory, File, ScanError
 
 # Nota: se usa el sistema de archivos real (tmp_path) en lugar de pyfakefs porque
 # SQLite accede al disco desde código C, fuera del alcance de pyfakefs.
@@ -160,7 +160,7 @@ def test_mountinfo_parsing(tmp_path: Path) -> None:
     ],
 )
 def test_is_hidden(name: str, hidden: bool) -> None:
-    from organizador.scanner.scanner import is_hidden
+    from airgnizer.scanner.scanner import is_hidden
 
     assert is_hidden(name) is hidden
 

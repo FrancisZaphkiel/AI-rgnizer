@@ -9,21 +9,21 @@ import pytest
 from PIL import Image, ImageFilter
 from sqlalchemy import select
 
-from organizador.actions import ActionService
-from organizador.actions.errors import SourceChangedError
-from organizador.cli import main
-from organizador.core.config import DuplicateSettings, ScanSettings
-from organizador.duplicates import (
+from airgnizer.actions import ActionService
+from airgnizer.actions.errors import SourceChangedError
+from airgnizer.cli import main
+from airgnizer.core.config import DuplicateSettings, ScanSettings
+from airgnizer.duplicates import (
     KeepPolicy,
     SimilarGroup,
     SimilarImageFinder,
     SimilarReport,
     trash_similar,
 )
-from organizador.duplicates.similar import cluster, hamming, image_info
-from organizador.scanner import Scanner
-from organizador.storage import Database
-from organizador.storage.models import IMAGE_UNREADABLE, File
+from airgnizer.duplicates.similar import cluster, hamming, image_info
+from airgnizer.scanner import Scanner
+from airgnizer.storage import Database
+from airgnizer.storage.models import IMAGE_UNREADABLE, File
 
 pytestmark = pytest.mark.integration
 

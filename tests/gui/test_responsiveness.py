@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from pytestqt.qtbot import QtBot
 
-from organizador.gui.controller import Controller
-from organizador.gui.window import MainWindow
-from organizador.storage.models import DownloadSuggestion
+from airgnizer.gui.controller import Controller
+from airgnizer.gui.window import MainWindow
+from airgnizer.storage.models import DownloadSuggestion
 from tests.gui.conftest import idle
 
 
@@ -132,6 +132,6 @@ def test_double_click_opens_instead_of_accepting(
 
 
 def test_open_reports_missing_file(gui: tuple[Controller, MainWindow], data: Path) -> None:
-    from organizador.gui.common import open_path
+    from airgnizer.gui.common import open_path
 
     assert "Ya no existe" in (open_path(data / "no-esta.pdf") or "")

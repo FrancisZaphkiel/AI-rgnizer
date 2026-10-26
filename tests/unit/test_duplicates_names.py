@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from organizador.duplicates.keep import strip_copy_marker
-from organizador.duplicates.names import is_series, normalize
+from airgnizer.duplicates.keep import strip_copy_marker
+from airgnizer.duplicates.names import is_series, normalize
 
 
 @pytest.mark.parametrize(

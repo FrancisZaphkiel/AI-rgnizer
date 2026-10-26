@@ -8,14 +8,14 @@ from mutagen.easyid3 import EasyID3
 from PIL import Image
 from sqlalchemy import select
 
-from organizador.core.config import ScanSettings
-from organizador.features import FileFeatures, extract_features
-from organizador.features import store as store_module
-from organizador.features.metadata import extract_metadata, mime_type, origin_domain
-from organizador.features.store import FeatureStats, indexed_features
-from organizador.scanner import Scanner
-from organizador.storage import Database
-from organizador.storage.models import File
+from airgnizer.core.config import ScanSettings
+from airgnizer.features import FileFeatures, extract_features
+from airgnizer.features import store as store_module
+from airgnizer.features.metadata import extract_metadata, mime_type, origin_domain
+from airgnizer.features.store import FeatureStats, indexed_features
+from airgnizer.scanner import Scanner
+from airgnizer.storage import Database
+from airgnizer.storage.models import File
 
 pytestmark = pytest.mark.integration
 

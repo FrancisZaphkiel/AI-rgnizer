@@ -11,18 +11,18 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from pytestqt.qtbot import QtBot
 
-from organizador.app import AppContext
-from organizador.cli import main as cli
-from organizador.core.config import (
+from airgnizer.app import AppContext
+from airgnizer.cli import main as cli
+from airgnizer.core.config import (
     LearningSettings,
     Settings,
     WatchSettings,
     save_settings,
 )
-from organizador.core.paths import AppPaths
-from organizador.gui.app import build
-from organizador.gui.controller import Controller
-from organizador.gui.window import MainWindow
+from airgnizer.core.paths import AppPaths
+from airgnizer.gui.app import build
+from airgnizer.gui.controller import Controller
+from airgnizer.gui.window import MainWindow
 
 
 @pytest.fixture

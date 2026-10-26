@@ -24,7 +24,7 @@ Fecha: 2026-10-25
 | Nombres parecidos | 2.0 s | informativo |
 
 Cómo reproducirlo: `uv run python benchmarks/bench_fase2.py` (genera el árbol en
-`~/.cache/organizador-bench`, en el SSD y no en `/tmp`, que es tmpfs; lo borra al terminar
+`~/.cache/airgnizer-bench`, en el SSD y no en `/tmp`, que es tmpfs; lo borra al terminar
 salvo con `--keep`).
 
 ### Antes y después de optimizar

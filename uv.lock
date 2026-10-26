@@ -7,6 +7,80 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "ai-rgnizer"
+version = "0.3.0"
+source = { editable = "." }
+dependencies = [
+    { name = "alembic" },
+    { name = "blake3" },
+    { name = "dbus-fast" },
+    { name = "imagehash" },
+    { name = "joblib" },
+    { name = "mutagen" },
+    { name = "pillow" },
+    { name = "pypdf" },
+    { name = "python-magic" },
+    { name = "rapidfuzz" },
+    { name = "scikit-learn" },
+    { name = "sqlalchemy" },
+    { name = "tomli-w" },
+    { name = "watchdog" },
+    { name = "xxhash" },
+]
+
+[package.optional-dependencies]
+gui = [
+    { name = "pyside6" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "hypothesis" },
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pyfakefs" },
+    { name = "pyside6" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "pytest-qt" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.14" },
+    { name = "blake3", specifier = ">=1.0" },
+    { name = "dbus-fast", specifier = ">=5.2" },
+    { name = "imagehash", specifier = ">=4.3" },
+    { name = "joblib", specifier = ">=1.4" },
+    { name = "mutagen", specifier = ">=1.47" },
+    { name = "pillow", specifier = ">=11" },
+    { name = "pypdf", specifier = ">=5.1" },
+    { name = "pyside6", marker = "extra == 'gui'", specifier = ">=6.8" },
+    { name = "python-magic", specifier = ">=0.4.27" },
+    { name = "rapidfuzz", specifier = ">=3.10" },
+    { name = "scikit-learn", specifier = ">=1.6" },
+    { name = "sqlalchemy", specifier = ">=2.0.36" },
+    { name = "tomli-w", specifier = ">=1.1" },
+    { name = "watchdog", specifier = ">=6.0" },
+    { name = "xxhash", specifier = ">=3.5" },
+]
+provides-extras = ["gui"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "hypothesis", specifier = ">=6.120" },
+    { name = "mypy", specifier = ">=1.13" },
+    { name = "pre-commit", specifier = ">=4.0" },
+    { name = "pyfakefs", specifier = ">=5.7" },
+    { name = "pyside6", specifier = ">=6.8" },
+    { name = "pytest", specifier = ">=8.3" },
+    { name = "pytest-cov", specifier = ">=6.0" },
+    { name = "pytest-qt", specifier = ">=4.5.0" },
+    { name = "ruff", specifier = ">=0.8" },
+]
+
+[[package]]
 name = "alembic"
 version = "1.20.1"
 source = { registry = "https://pypi.org/simple" }
@@ -895,80 +969,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/b5/4da41c328788f575838f97a098fe8ca691ebc6f6fd73ad4a262ee40b184d/numpy-2.5.4-cp315-cp315t-win32.whl", hash = "sha256:ad62a416ddcf863bf44bba76fbf6b53366ab0692e294f51cae4b5fbe0d246788", size = 6335804, upload-time = "2026-10-10T20:05:19.921Z" },
     { url = "https://files.pythonhosted.org/packages/98/94/6482ddfa3d312490cb9358f375bf2ad56427dbea8769187158e94d653753/numpy-2.5.4-cp315-cp315t-win_amd64.whl", hash = "sha256:38f47be9f74ab870d2633b5456ae519c43758a8d1fd05342f0ce4ecc034396ee", size = 12890095, upload-time = "2026-10-10T20:05:21.875Z" },
     { url = "https://files.pythonhosted.org/packages/48/7f/c2d1b436b6e7cfebac140c2579a298344b85f2991a2ce5c3615cefb29400/numpy-2.5.4-cp315-cp315t-win_arm64.whl", hash = "sha256:7a14a461d9340f1b46b8648578aed9cdb8b3b018a8fac6c1dde2c9192a01a87f", size = 10883718, upload-time = "2026-10-10T20:05:28.547Z" },
-]
-
-[[package]]
-name = "organizador"
-version = "0.3.0"
-source = { editable = "." }
-dependencies = [
-    { name = "alembic" },
-    { name = "blake3" },
-    { name = "dbus-fast" },
-    { name = "imagehash" },
-    { name = "joblib" },
-    { name = "mutagen" },
-    { name = "pillow" },
-    { name = "pypdf" },
-    { name = "python-magic" },
-    { name = "rapidfuzz" },
-    { name = "scikit-learn" },
-    { name = "sqlalchemy" },
-    { name = "tomli-w" },
-    { name = "watchdog" },
-    { name = "xxhash" },
-]
-
-[package.optional-dependencies]
-gui = [
-    { name = "pyside6" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "hypothesis" },
-    { name = "mypy" },
-    { name = "pre-commit" },
-    { name = "pyfakefs" },
-    { name = "pyside6" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "pytest-qt" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "alembic", specifier = ">=1.14" },
-    { name = "blake3", specifier = ">=1.0" },
-    { name = "dbus-fast", specifier = ">=5.2" },
-    { name = "imagehash", specifier = ">=4.3" },
-    { name = "joblib", specifier = ">=1.4" },
-    { name = "mutagen", specifier = ">=1.47" },
-    { name = "pillow", specifier = ">=11" },
-    { name = "pypdf", specifier = ">=5.1" },
-    { name = "pyside6", marker = "extra == 'gui'", specifier = ">=6.8" },
-    { name = "python-magic", specifier = ">=0.4.27" },
-    { name = "rapidfuzz", specifier = ">=3.10" },
-    { name = "scikit-learn", specifier = ">=1.6" },
-    { name = "sqlalchemy", specifier = ">=2.0.36" },
-    { name = "tomli-w", specifier = ">=1.1" },
-    { name = "watchdog", specifier = ">=6.0" },
-    { name = "xxhash", specifier = ">=3.5" },
-]
-provides-extras = ["gui"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "hypothesis", specifier = ">=6.120" },
-    { name = "mypy", specifier = ">=1.13" },
-    { name = "pre-commit", specifier = ">=4.0" },
-    { name = "pyfakefs", specifier = ">=5.7" },
-    { name = "pyside6", specifier = ">=6.8" },
-    { name = "pytest", specifier = ">=8.3" },
-    { name = "pytest-cov", specifier = ">=6.0" },
-    { name = "pytest-qt", specifier = ">=4.5.0" },
-    { name = "ruff", specifier = ">=0.8" },
 ]
 
 [[package]]

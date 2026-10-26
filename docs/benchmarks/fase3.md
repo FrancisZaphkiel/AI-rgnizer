@@ -15,7 +15,7 @@ Archivos reales del usuario en `~/Documentos`, `~/Música`, `~/Imágenes` y `~/V
 | Ejemplos | 3 328 en 33 carpetas (las de < 5 archivos se descartan) |
 | Partición | 80 % entrenamiento / 20 % prueba, estratificada |
 
-## Resultados (`organizador evaluate`)
+## Resultados (`airgnizer evaluate`)
 
 | Métrica | Valor | Objetivo |
 |---|---|---|
@@ -41,5 +41,5 @@ sale de la caché), evaluación ≈ 8 s, `review` (5 modelos) ≈ 2 min 45 s.
 ## Reproducir
 
 ```fish
-uv run organizador evaluate ~/Documentos ~/Música ~/Imágenes ~/Vídeos
+uv run airgnizer evaluate ~/Documentos ~/Música ~/Imágenes ~/Vídeos
 ```
