@@ -123,23 +123,27 @@ class ModelStore:
         self.load(version)  # comprueba que es compatible antes de activarla
         self._set_current(version)
 
+    def path_of(self, version: int) -> Path:
+        return self._path(version)
+
+    def info(self, version: int, current: int | None = None) -> ModelInfo | None:
+        """Datos de una versión (la carga entera); ``None`` si no se puede leer."""
+        try:
+            model = self.load(version)
+        except (IncompatibleModelError, ModelNotFoundError, OSError, EOFError):
+            return None
+        current = self.current_version() if current is None else current
+        return ModelInfo(
+            version=version,
+            path=self._path(version),
+            trained_at=model.trained_at,
+            n_examples=model.n_examples,
+            n_classes=len(model.classes),
+            n_rules=len(model.rules),
+            current=version == current,
+        )
+
     def list(self) -> list[ModelInfo]:
         current = self.current_version()
-        infos: list[ModelInfo] = []
-        for version in self._versions():
-            try:
-                model = self.load(version)
-            except (IncompatibleModelError, OSError, EOFError):
-                continue
-            infos.append(
-                ModelInfo(
-                    version=version,
-                    path=self._path(version),
-                    trained_at=model.trained_at,
-                    n_examples=model.n_examples,
-                    n_classes=len(model.classes),
-                    n_rules=len(model.rules),
-                    current=version == current,
-                )
-            )
-        return infos
+        infos = (self.info(version, current) for version in self._versions())
+        return [info for info in infos if info is not None]

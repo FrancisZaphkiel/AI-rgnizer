@@ -162,14 +162,14 @@ class SettingsView(QWidget):
             self._autostart = (service, tray)
             self._ctrl.notify_changed()
 
-        self._ctrl.runner.submit(work, on_done=done, on_error=self._ctrl.report)
+        self._ctrl.ops.submit(work, on_done=done, on_error=self._ctrl.report)
 
     def export_data(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "Exportar datos a…", str(Path.home()))
         if not folder:
             return
         ctx = self._ctrl.ctx
-        self._ctrl.runner.submit(
+        self._ctrl.jobs.submit(
             lambda: maintenance.export_data(ctx, Path(folder)),
             on_done=lambda path: QMessageBox.information(
                 self, "Datos exportados", f"Guardados en\n{path}"
@@ -196,7 +196,7 @@ class SettingsView(QWidget):
         if not self.confirm_erase():
             return
         ctx, remote = self._ctrl.ctx, self._ctrl.remote
-        self._ctrl.runner.submit(
+        self._ctrl.ops.submit(
             lambda: maintenance.erase_learned_data(ctx, service_running=remote),
             on_done=lambda _r: self._ctrl.notify_changed(),
             on_error=self._ctrl.report,

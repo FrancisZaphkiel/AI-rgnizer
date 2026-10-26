@@ -13,11 +13,26 @@ según [SemVer](https://semver.org/lang/es/).
   Ajustes (carpetas, modo, umbral, arranque con la sesión, exportar y borrar datos).
   Icono de bandeja con contador de pendientes. Usa el servicio por D-Bus si está en
   marcha; si no, trabaja en local. Todo lo lento va en segundo plano.
+- GUI: **Abrir** (y doble clic) en Descargas, Duplicados e Historial abre el archivo con
+  la aplicación predeterminada del sistema, para comprobar una sugerencia antes de
+  aceptarla. En Descargas el doble clic ya no acepta.
 - **La CLI delega en el servicio** cuando está en marcha sobre la misma base de datos
   (único escritor): `mv`, `rename`, `trash`, `undo`, `accept`, `ignore`, `teach`,
   `review --move` y las papeleras de `dupes`/`similar`. Opción global `--local`.
 - API D-Bus v1 (añadidos compatibles): `Move`, `Rename`, `Trash`, `Teach` y la propiedad
   `DatabasePath`.
+
+### Corregido
+
+- GUI: la ventana se congelaba (más de 15 s con ~450 descargas pendientes) al rellenar
+  tablas visibles con columnas autoajustables; ahora se miden una vez por relleno.
+- GUI: los avisos de cambio se agrupan, solo se recarga la vista visible, las consultas
+  no se solapan y lecturas, operaciones y trabajos largos usan hilos separados.
+- GUI: caída ocasional al destruirse en un hilo de trabajo el objeto que entregaba el
+  resultado de una tarea.
+- GUI: «Aprender de mis carpetas» entrena en otro proceso; el Panel solo lee el modelo
+  activo (antes cargaba todas las versiones).
+- Servicio: aceptar una sugerencia ya no relee el modelo de disco cada vez.
 
 ## [0.2.0] — 2026-10-26
 

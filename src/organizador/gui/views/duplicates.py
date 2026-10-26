@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 from organizador.app import AppContext
 from organizador.duplicates import DuplicateFinder, DuplicateGroup, KeepPolicy, trash_redundant
 from organizador.duplicates.finder import DuplicateReport
-from organizador.gui.common import heading, human_size, icon, pretty
+from organizador.gui.common import heading, human_size, icon, open_path, pretty
 from organizador.gui.controller import Controller
 from organizador.scanner import Scanner
 
@@ -119,6 +119,7 @@ class DuplicatesView(QWidget):
         self.tree.header().setStretchLastSection(True)
         self.tree.itemSelectionChanged.connect(self._update_buttons)
         self.tree.itemChanged.connect(lambda *_: self._update_buttons())
+        self.tree.itemDoubleClicked.connect(self._open_item)
         layout.addWidget(self.tree)
 
         bottom = QHBoxLayout()
@@ -146,7 +147,7 @@ class DuplicatesView(QWidget):
         self.stop.setVisible(True)
         self.status.setText("Buscando…")
         ctx = self._ctrl.ctx
-        self._ctrl.runner.submit(
+        self._ctrl.jobs.submit(
             lambda progress: find_duplicates(ctx, cancel, progress),
             on_done=self._found,
             on_error=self._failed,
@@ -239,12 +240,17 @@ class DuplicatesView(QWidget):
                     with contextlib.suppress(RuntimeError):
                         child.setIcon(0, QIcon(QPixmap.fromImage(image)))
 
-        self._ctrl.runner.submit(load, on_done=show)
+        self._ctrl.jobs.submit(load, on_done=show)
 
     def _selected_file(self) -> tuple[int, Any] | None:
         items = self.tree.selectedItems()
         data = items[0].data(0, _ROLE) if items else None
         return data if isinstance(data, tuple) else None
+
+    def _open_item(self, item: QTreeWidgetItem, _column: int) -> None:
+        data = item.data(0, _ROLE)
+        if isinstance(data, tuple) and (problem := open_path(data[1].path)) is not None:
+            self._ctrl.error.emit(problem)
 
     def checked_groups(self) -> list[DuplicateGroup]:
         return [s.group for s in self._shown if s.item.checkState(0) == Qt.CheckState.Checked]
@@ -308,4 +314,4 @@ class DuplicatesView(QWidget):
             if errors:
                 self._ctrl.error.emit("\n".join(errors))
 
-        self._ctrl.runner.submit(work, on_done=done, on_error=self._ctrl.report)
+        self._ctrl.ops.submit(work, on_done=done, on_error=self._ctrl.report)

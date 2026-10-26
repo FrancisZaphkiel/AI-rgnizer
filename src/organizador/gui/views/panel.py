@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QProcess, Signal
+from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from organizador import overview
-from organizador.app import retrain_from_index
 from organizador.gui.common import heading, human_size
 from organizador.gui.controller import Controller
 from organizador.learning.store import ModelInfo
-from organizador.scanner import Scanner
+
+# Código de salida de «organizador train» cuando faltan ejemplos.
+NOT_ENOUGH_DATA = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,46 +86,49 @@ class PanelView(QWidget):
         self.service = QLabel("")
         layout.addWidget(self.service)
         layout.addStretch()
+        self._training: QProcess | None = None
+        self._refresher = ctrl.refresher(self, lambda: summarize(ctrl), self.show_summary)
         ctrl.changed.connect(self.refresh)
 
     def train(self) -> None:
+        """Reescanea y reentrena en otro proceso: no compite con la interfaz por el GIL."""
         ctx = self._ctrl.ctx
         if not ctx.settings.indexed_dirs:
             self._ctrl.error.emit(
                 "Configura en Ajustes las carpetas organizadas de las que aprender."
             )
             return
+        if self._training is not None:
+            return
         self.learn.setEnabled(False)
         self.learn.setText("Aprendiendo…")
+        process = self._training = QProcess(self)
+        process.finished.connect(self._trained)
+        process.start(sys.executable, ["-m", "organizador", "train"])
 
-        def work() -> int | None:
-            scanner = Scanner(ctx.db, ctx.settings.scan)
-            for root in ctx.settings.indexed_dirs:
-                if root.expanduser().is_dir():
-                    scanner.scan(root.expanduser())
-            return retrain_from_index(ctx)
-
-        def done(version: int | None) -> None:
-            self.learn.setEnabled(True)
-            self.learn.setText("Aprender de mis carpetas")
-            if version is None:
-                self._ctrl.error.emit(
-                    "Aún no hay suficientes ejemplos: hacen falta al menos dos carpetas con "
-                    f"{ctx.settings.learning.min_examples} archivos o más."
-                )
-            self._ctrl.notify_changed()
-
-        def failed(exc: Exception) -> None:
-            self.learn.setEnabled(True)
-            self.learn.setText("Aprender de mis carpetas")
-            self._ctrl.report(exc)
-
-        self._ctrl.runner.submit(work, on_done=done, on_error=failed)
+    def _trained(self, code: int, status: QProcess.ExitStatus) -> None:
+        process, self._training = self._training, None
+        self.learn.setEnabled(True)
+        self.learn.setText("Aprender de mis carpetas")
+        if process is None:
+            return
+        errors = bytes(process.readAllStandardError().data()).decode(errors="replace").strip()
+        process.deleteLater()
+        if status == QProcess.ExitStatus.NormalExit and code == NOT_ENOUGH_DATA:
+            self._ctrl.error.emit(
+                "Aún no hay suficientes ejemplos: hacen falta al menos dos carpetas con "
+                f"{self._ctrl.ctx.settings.learning.min_examples} archivos o más."
+            )
+        elif status != QProcess.ExitStatus.NormalExit or code != 0:
+            self._ctrl.error.emit(errors or "No se pudo entrenar el modelo.")
+        self._ctrl.notify_changed()
 
     def refresh(self) -> None:
-        self._ctrl.runner.submit(
-            lambda: summarize(self._ctrl), on_done=self.show_summary, on_error=self._ctrl.report
-        )
+        self._refresher.request()
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802 - API de Qt
+        super().showEvent(event)
+        self._refresher.shown()
 
     def show_summary(self, summary: Summary) -> None:
         self.pending.value.setText(str(summary.pending))

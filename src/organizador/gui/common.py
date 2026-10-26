@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
@@ -33,6 +36,20 @@ def pretty(path: str | Path) -> str:
     return "~" + text[len(home) :] if text == home or text.startswith(home + "/") else text
 
 
+def open_path(path: str | Path) -> str | None:
+    """Abre el archivo con la aplicación predeterminada; devuelve el error o ``None``.
+
+    En KDE pasa por el portal o ``xdg-open``: el visor de imágenes, el reproductor o el
+    editor de texto que tengas configurado. No espera a que la aplicación termine.
+    """
+    target = Path(path)
+    if not target.exists():
+        return f"Ya no existe: {pretty(target)}"
+    if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(target))):
+        return f"No hay ninguna aplicación para abrir {target.name}"
+    return None
+
+
 def human_size(n: int) -> str:
     size = float(n)
     for unit in ("B", "KiB", "MiB", "GiB"):
@@ -58,6 +75,29 @@ def table(headers: list[str], *, stretch: int = 0) -> QTableWidget:
     header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
     header.setSectionResizeMode(stretch, QHeaderView.ResizeMode.Stretch)
     return t
+
+
+@contextmanager
+def filling(t: QTableWidget) -> Iterator[None]:
+    """Rellena la tabla de una vez.
+
+    Con columnas ``ResizeToContents`` cada ``setItem`` vuelve a medir la columna entera:
+    rellenar 450 filas con la tabla visible congelaba la ventana más de 15 s. Mientras
+    dura se fijan los anchos, y se miden una sola vez al final.
+    """
+    header = t.horizontalHeader()
+    modes = [header.sectionResizeMode(i) for i in range(header.count())]
+    t.setUpdatesEnabled(False)
+    t.blockSignals(True)
+    for i in range(header.count()):
+        header.setSectionResizeMode(i, QHeaderView.ResizeMode.Fixed)
+    try:
+        yield
+    finally:
+        for i, mode in enumerate(modes):
+            header.setSectionResizeMode(i, mode)
+        t.blockSignals(False)
+        t.setUpdatesEnabled(True)
 
 
 def cell(text: str, tooltip: str | None = None) -> QTableWidgetItem:

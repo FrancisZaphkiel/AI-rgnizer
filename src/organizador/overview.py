@@ -112,8 +112,27 @@ def recoverable_from_index(ctx: AppContext, roots: Sequence[Path] | None = None)
     return Recoverable(int(groups), int(total))
 
 
+_model_info_cache: dict[tuple[str, int], ModelInfo] = {}
+
+
 def model_info(ctx: AppContext) -> ModelInfo | None:
-    return next((m for m in ctx.models().list() if m.current), None)
+    """El modelo activo; se lee solo ese archivo y solo cuando cambia."""
+    store = ctx.models()
+    version = store.current_version()
+    if version is None:
+        return None
+    path = store.path_of(version)
+    try:
+        key = (str(path), path.stat().st_mtime_ns)
+    except OSError:
+        return None
+    if key not in _model_info_cache:
+        _model_info_cache.clear()
+        info = store.info(version)
+        if info is None:
+            return None
+        _model_info_cache[key] = info
+    return _model_info_cache[key]
 
 
 @dataclass(frozen=True, slots=True)

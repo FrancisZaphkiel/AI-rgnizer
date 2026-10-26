@@ -138,6 +138,8 @@ uv run organizador gui              # ventana principal + icono de bandeja
 uv run organizador gui --hidden     # solo la bandeja (lo usa el arranque con la sesión)
 ```
 
+En **Descargas**, **Abrir** (o doble clic) abre el archivo con su aplicación predeterminada
+(visor de imágenes, reproductor, editor…) para comprobar la sugerencia antes de aceptarla.
 Si el servicio está en marcha la GUI le pide las operaciones por D-Bus y se actualiza con
 sus señales; si no, trabaja en local. Enviar a la papelera pide siempre confirmación y todo
 se puede deshacer desde **Historial**. **Ajustes → Borrar datos aprendidos** elimina la

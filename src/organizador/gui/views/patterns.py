@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QAbstractItemView, QLabel, QTableWidgetItem, QVBoxLayout, QWidget
 
 from organizador import overview
-from organizador.gui.common import cell, heading, pretty, table
+from organizador.gui.common import cell, filling, heading, pretty, table
 from organizador.gui.controller import Controller
 
 COL_FOLDER, COL_TEMPLATE, COL_SUPPORT, COL_EXAMPLES = range(4)
@@ -38,36 +39,40 @@ class PatternsView(QWidget):
         )
         self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.empty)
+        self._refresher = ctrl.refresher(
+            self, lambda: overview.pattern_rows(ctrl.ctx), self.show_rows
+        )
 
     def refresh(self) -> None:
-        self._ctrl.runner.submit(
-            lambda: overview.pattern_rows(self._ctrl.ctx),
-            on_done=self.show_rows,
-            on_error=self._ctrl.report,
-        )
+        self._refresher.request()
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802 - API de Qt
+        super().showEvent(event)
+        self._refresher.shown()
 
     def show_rows(self, rows: list[overview.FolderPatternRow]) -> None:
         self._rows = rows
-        self.table.blockSignals(True)
-        self.table.setRowCount(len(rows))
-        for i, row in enumerate(rows):
-            folder = cell(pretty(row.folder), row.folder)
-            folder.setFlags(folder.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            folder.setCheckState(Qt.CheckState.Checked if row.enabled else Qt.CheckState.Unchecked)
-            self.table.setItem(i, COL_FOLDER, folder)
-            template = QTableWidgetItem(row.pattern.pattern.template if row.pattern else "")
-            template.setFlags(template.flags() | Qt.ItemFlag.ItemIsEditable)
-            template.setToolTip("Editada por ti" if row.edited else "Inferida de tus archivos")
-            if row.edited:
-                font = template.font()
-                font.setItalic(True)
-                template.setFont(font)
-            self.table.setItem(i, COL_TEMPLATE, template)
-            p = row.pattern
-            support = f"{p.support} de {p.total} ({p.fraction:.0%})" if p and p.total else "—"
-            self.table.setItem(i, COL_SUPPORT, cell(support))
-            self.table.setItem(i, COL_EXAMPLES, cell(", ".join(p.examples) if p else ""))
-        self.table.blockSignals(False)
+        with filling(self.table):
+            self.table.setRowCount(len(rows))
+            for i, row in enumerate(rows):
+                folder = cell(pretty(row.folder), row.folder)
+                folder.setFlags(folder.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                folder.setCheckState(
+                    Qt.CheckState.Checked if row.enabled else Qt.CheckState.Unchecked
+                )
+                self.table.setItem(i, COL_FOLDER, folder)
+                template = QTableWidgetItem(row.pattern.pattern.template if row.pattern else "")
+                template.setFlags(template.flags() | Qt.ItemFlag.ItemIsEditable)
+                template.setToolTip("Editada por ti" if row.edited else "Inferida de tus archivos")
+                if row.edited:
+                    font = template.font()
+                    font.setItalic(True)
+                    template.setFont(font)
+                self.table.setItem(i, COL_TEMPLATE, template)
+                p = row.pattern
+                support = f"{p.support} de {p.total} ({p.fraction:.0%})" if p and p.total else "—"
+                self.table.setItem(i, COL_SUPPORT, cell(support))
+                self.table.setItem(i, COL_EXAMPLES, cell(", ".join(p.examples) if p else ""))
         self.table.setVisible(bool(rows))
         self.empty.setVisible(not rows)
 
@@ -82,7 +87,7 @@ class PatternsView(QWidget):
         enabled = folder_item.checkState() == Qt.CheckState.Checked
         template = template_item.text()
         backend = self._ctrl.backend
-        self._ctrl.runner.submit(
+        self._ctrl.ops.submit(
             lambda: backend.set_pattern(row.folder, template, enabled),
             on_done=lambda _r: self.refresh(),
             on_error=self._rejected,

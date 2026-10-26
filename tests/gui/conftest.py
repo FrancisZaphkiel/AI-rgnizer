@@ -65,7 +65,7 @@ def gui(qtbot: QtBot, data: Path, xdg_data: Path) -> Iterator[tuple[Controller, 
     yield ctrl, window
     if tray is not None:
         tray.hide()
-    ctrl.runner.pool.waitForDone(5000)
+    ctrl.close()
     ctx.db.dispose()
 
 
@@ -77,4 +77,4 @@ def xdg_data(data: Path) -> Path:
 
 def idle(qtbot: QtBot, ctrl: Controller) -> None:
     """Espera a que terminen las tareas en segundo plano y se entreguen sus resultados."""
-    qtbot.waitUntil(lambda: ctrl.runner.busy == 0, timeout=10000)
+    qtbot.waitUntil(lambda: not ctrl.busy, timeout=10000)

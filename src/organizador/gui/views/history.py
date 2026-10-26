@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QStyle, QVBoxLayout, QWidget
 
 from organizador import overview
 from organizador.actions.service import UNDOABLE
-from organizador.gui.common import cell, heading, icon, pretty, table
+from organizador.gui.common import cell, filling, heading, icon, open_path, pretty, table
 from organizador.gui.controller import Controller
 from organizador.storage.models import ActionJournal, ActionKind, ActionState
 
@@ -40,6 +41,8 @@ class HistoryView(QWidget):
         layout.addWidget(heading("Historial"))
         self.table = table(["Cuándo", "Acción", "Estado", "Archivo", "Destino"], stretch=4)
         self.table.itemSelectionChanged.connect(self._update_buttons)
+        self.table.setToolTip("Doble clic: abre el archivo")
+        self.table.doubleClicked.connect(lambda index: self.open_row(index.row()))
         layout.addWidget(self.table)
         buttons = QHBoxLayout()
         self.undo = QPushButton(
@@ -49,29 +52,40 @@ class HistoryView(QWidget):
         buttons.addStretch()
         buttons.addWidget(self.undo)
         layout.addLayout(buttons)
+        self._refresher = ctrl.refresher(self, lambda: overview.history(ctrl.ctx), self.show_rows)
         ctrl.changed.connect(self.refresh)
         self._update_buttons()
 
     def refresh(self) -> None:
-        self._ctrl.runner.submit(
-            lambda: overview.history(self._ctrl.ctx),
-            on_done=self.show_rows,
-            on_error=self._ctrl.report,
-        )
+        self._refresher.request()
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802 - API de Qt
+        super().showEvent(event)
+        self._refresher.shown()
+
+    def open_row(self, row: int) -> None:
+        """Abre el archivo donde está ahora: en el destino o, si se deshizo, en el origen."""
+        if row >= len(self._rows):
+            return
+        e = self._rows[row]
+        here = e.source if e.state == ActionState.REVERTED or not e.destination else e.destination
+        if (problem := open_path(here)) is not None:
+            self._ctrl.error.emit(problem)
 
     def show_rows(self, rows: list[ActionJournal]) -> None:
         self._rows = rows
-        self.table.setRowCount(len(rows))
-        for i, e in enumerate(rows):
-            when = e.created_at.astimezone().strftime("%d/%m/%Y %H:%M")
-            self.table.setItem(i, 0, cell(when))
-            self.table.setItem(i, 1, cell(KIND_TEXT.get(e.kind, str(e.kind))))
-            state = STATE_TEXT.get(e.state, str(e.state))
-            self.table.setItem(i, 2, cell(state, e.error or state))
-            self.table.setItem(i, 3, cell(Path(e.source).name, e.source))
-            self.table.setItem(
-                i, 4, cell(pretty(e.destination) if e.destination else "—", e.destination)
-            )
+        with filling(self.table):
+            self.table.setRowCount(len(rows))
+            for i, e in enumerate(rows):
+                when = e.created_at.astimezone().strftime("%d/%m/%Y %H:%M")
+                self.table.setItem(i, 0, cell(when))
+                self.table.setItem(i, 1, cell(KIND_TEXT.get(e.kind, str(e.kind))))
+                state = STATE_TEXT.get(e.state, str(e.state))
+                self.table.setItem(i, 2, cell(state, e.error or state))
+                self.table.setItem(i, 3, cell(Path(e.source).name, e.source))
+                self.table.setItem(
+                    i, 4, cell(pretty(e.destination) if e.destination else "—", e.destination)
+                )
         self._update_buttons()
 
     def selected(self) -> list[ActionJournal]:
@@ -99,4 +113,4 @@ class HistoryView(QWidget):
             if errors:
                 self._ctrl.error.emit("\n".join(errors))
 
-        self._ctrl.runner.submit(work, on_done=done, on_error=self._ctrl.report)
+        self._ctrl.ops.submit(work, on_done=done, on_error=self._ctrl.report)

@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +45,8 @@ class AppContext:
     db: Database
     # Cómo avisar de las acciones interrumpidas que se recuperan (la CLI usa print).
     report: Callable[[str], None] = log.warning
+    # Modelo activo ya cargado, por (archivo, mtime): aceptar una sugerencia no lo relee.
+    model_cache: dict[tuple[str, int], DestinationModel] = field(default_factory=dict)
 
     @classmethod
     def open(cls) -> AppContext:
@@ -71,11 +73,34 @@ class AppContext:
 
 def load_model(ctx: AppContext) -> DestinationModel | None:
     """Modelo activo; sin él solo se usan las reglas de config.toml y los destinos por tipo."""
+    key = _model_key(ctx)
+    if key is not None and key in ctx.model_cache:
+        return ctx.model_cache[key]
     try:
-        return ctx.models().load()
+        model = ctx.models().load()
     except (ModelNotFoundError, IncompatibleModelError) as exc:
         log.warning("%s; solo se usan tus reglas y los destinos por tipo", exc)
         return None
+    _remember_model(ctx, model)
+    return model
+
+
+def _model_key(ctx: AppContext) -> tuple[str, int] | None:
+    store = ctx.models()
+    version = store.current_version()
+    if version is None:
+        return None
+    path = store.path_of(version)
+    try:
+        return str(path), path.stat().st_mtime_ns
+    except OSError:
+        return None
+
+
+def _remember_model(ctx: AppContext, model: DestinationModel) -> None:
+    ctx.model_cache.clear()
+    if (key := _model_key(ctx)) is not None:
+        ctx.model_cache[key] = model
 
 
 def learning_exclude(ctx: AppContext) -> list[Path]:
@@ -138,7 +163,9 @@ def record_choice(
             select(func.count()).select_from(Feedback).where(Feedback.chosen == label)
         )
     if model is not None and model.learn(features, label):
-        return f"aprendido: {path.name} → {label} (modelo {ctx.models().save(model)})"
+        saved = ctx.models().save(model)
+        _remember_model(ctx, model)  # la versión nueva es este mismo objeto
+        return f"aprendido: {path.name} → {label} (modelo {saved})"
     if (pending or 0) >= learning.retrain_after and (version := retrain_from_index(ctx)):
         return f"{label}: {pending} archivos elegidos, reentrenado (modelo {version})"
     return (

@@ -61,6 +61,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not (args.hidden and tray is not None):
         window.show()
     try:
+        app.aboutToQuit.connect(ctrl.close)
         return app.exec()
     finally:
         if isinstance(ctrl.backend, RemoteBackend):
