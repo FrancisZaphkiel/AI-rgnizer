@@ -26,6 +26,7 @@ dependencies = [
     "scikit-learn>=1.6",
     "joblib>=1.4",
     "watchdog>=6.0",
+    "dbus-fast>=5.2",
 ]
 
 [project.scripts]
@@ -68,8 +69,12 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR2004", "S101", "PLC0415"]
+# Servidor D-Bus falso: nombres y firmas impuestos por org.freedesktop.Notifications.
+"tests/integration/test_service.py" = ["N802", "PLR0917"]
 "src/organizador/storage/migrations/**" = ["N999"]
-"src/organizador/actions/fsops.py" = ["TID251", "PTH108"] # único módulo con borrados auditados
+"src/organizador/actions/fsops.py" = ["TID251", "PTH108"]
+# D-Bus: nombres de métodos, propiedades y señales en CamelCase.
+"src/organizador/service/api.py" = ["N802"] # único módulo con borrados auditados
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "os.remove".msg = "Prohibido: los borrados solo se permiten en organizador.actions.fsops."

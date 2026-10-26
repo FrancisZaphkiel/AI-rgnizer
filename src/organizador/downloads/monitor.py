@@ -26,7 +26,14 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from watchdog.events import FileSystemEvent, FileSystemEventHandler
+from watchdog.events import (
+    FileClosedEvent,
+    FileCreatedEvent,
+    FileModifiedEvent,
+    FileMovedEvent,
+    FileSystemEvent,
+    FileSystemEventHandler,
+)
 from watchdog.observers import Observer
 from watchdog.observers.api import BaseObserver, ObservedWatch
 from watchdog.observers.polling import PollingObserver
@@ -41,6 +48,16 @@ from organizador.scanner.mounts import filesystem_of
 from organizador.storage.models import DownloadSuggestion, SuggestionState
 
 log = logging.getLogger(__name__)
+
+# Solo eventos que cambian contenido o nombre. Las aperturas y lecturas (IN_OPEN,
+# IN_CLOSE_NOWRITE) se ignoran: las provocan el propio análisis del archivo, Baloo o un
+# visor, y volverían a meter el archivo en la cola de espera una y otra vez.
+EVENT_FILTER: list[type[FileSystemEvent]] = [
+    FileCreatedEvent,
+    FileModifiedEvent,
+    FileMovedEvent,
+    FileClosedEvent,
+]
 
 # Segundos entre lecturas de una carpeta sondeada (sistemas de archivos de red).
 NETWORK_POLL_SECONDS = 5.0
@@ -83,7 +100,7 @@ class DownloadMonitor:
         self._queue = queue
         self._classify = classify
         self._mover = mover
-        self._tracker = StabilityTracker(settings.stable_seconds)
+        self._tracker = StabilityTracker(settings.stable_seconds, is_known=queue.knows)
         self._lock = threading.Lock()
 
     # --- entrada (puede llamarse desde los hilos de watchdog) ------------------------
@@ -155,6 +172,27 @@ class DownloadMonitor:
 
     # --- bucle -----------------------------------------------------------------------
 
+    def start(self, *, rewatch_seconds: float = 5.0) -> None:
+        """Empieza a vigilar; después hay que llamar a ``tick`` periódicamente y a ``close``."""
+        self._watches = _Watches(self, PollingObserver(timeout=NETWORK_POLL_SECONDS))
+        self._rewatch_seconds = rewatch_seconds
+        self._next_rewatch = self._next_reconcile = 0.0
+
+    def tick(self, now: float | None = None) -> list[Outcome]:
+        """Un paso del bucle: vigilancias, reconciliación si toca y descargas terminadas."""
+        now = time.monotonic() if now is None else now
+        if now >= self._next_rewatch:
+            for directory in self._watches.sync():
+                self._reconcile_dir(directory, now)  # recién conectada
+            self._next_rewatch = now + self._rewatch_seconds
+        if now >= self._next_reconcile:
+            self.reconcile(now)
+            self._next_reconcile = now + self._settings.reconcile_seconds
+        return self.process()
+
+    def close(self) -> None:
+        self._watches.close()
+
     def run(
         self,
         stop: threading.Event,
@@ -164,23 +202,14 @@ class DownloadMonitor:
         rewatch_seconds: float = 5.0,
     ) -> None:
         """Vigila hasta que se active ``stop``."""
-        watches = _Watches(self, PollingObserver(timeout=NETWORK_POLL_SECONDS))
+        self.start(rewatch_seconds=rewatch_seconds)
         try:
-            next_reconcile = next_rewatch = 0.0
             while not stop.is_set():
-                now = time.monotonic()
-                if now >= next_rewatch:
-                    for directory in watches.sync():
-                        self._reconcile_dir(directory, now)  # recién conectada
-                    next_rewatch = now + rewatch_seconds
-                if now >= next_reconcile:
-                    self.reconcile(now)
-                    next_reconcile = now + self._settings.reconcile_seconds
-                for outcome in self.process():
+                for outcome in self.tick():
                     on_outcome(outcome)
                 stop.wait(poll_seconds)
         finally:
-            watches.close()
+            self.close()
 
 
 class _Watches:
@@ -219,7 +248,7 @@ class _Watches:
         network = mount is not None and mount.is_network
         observer = self._polling if network else self._native
         try:
-            watch = observer.schedule(_Handler(self._monitor), str(directory), recursive=False)
+            watch = self._schedule(observer, directory)
         except OSError as exc:
             if network:
                 log.warning("No se puede vigilar %s: %s", directory, exc)
@@ -227,11 +256,17 @@ class _Watches:
             # Sin inotify (límite de vigilancias, FUSE sin soporte): sondeo.
             log.info("inotify no disponible en %s (%s): se sondea", directory, exc)
             observer = self._polling
-            watch = observer.schedule(_Handler(self._monitor), str(directory), recursive=False)
+            watch = self._schedule(observer, directory)
         self._active[directory] = (observer, watch, identity)
         fstype = mount.fstype if mount else "?"
         log.info("Vigilando %s (%s, %s)", directory, fstype, "sondeo" if network else "inotify")
         return True
+
+    def _schedule(self, observer: BaseObserver, directory: Path) -> ObservedWatch:
+        handler = _Handler(self._monitor)
+        return observer.schedule(
+            handler, str(directory), recursive=False, event_filter=EVENT_FILTER
+        )
 
     def _drop(self, directory: Path) -> None:
         observer, watch, _ = self._active.pop(directory)

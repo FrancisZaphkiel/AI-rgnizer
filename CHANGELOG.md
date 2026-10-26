@@ -22,6 +22,13 @@ publicará al cerrar la Fase 4 (vigilancia de Descargas), según el plan.
 - **Varias carpetas de descargas** (`watched list|add|remove`), también en discos externos:
   se vigilan al conectarse y se dejan al desconectarse, sin perder sugerencias; sondeo en
   sistemas de archivos de red.
+- **Servicio** (`daemon`, `service install|uninstall|status`): unidad `systemd --user`
+  (`Type=dbus`, `Restart=on-failure`) con activación D-Bus; un único hilo escritor y una
+  sola instancia por usuario. **API D-Bus** versionada (`ListPending`, `Accept`, `Ignore`,
+  `Undo`, `History`, `Rescan`; señales `SuggestionAdded` y `SuggestionResolved`).
+- **Notificaciones de escritorio** con acciones; «Elegir…» usa el selector de carpetas del
+  portal (nativo de KDE en Plasma), con `kdialog`/`zenity` como alternativa.
+- Deshacer el movimiento de una descarga vuelve a dejar pendiente su sugerencia.
 
 - **Características por archivo** (caché en el índice): palabras, fechas, versión y marcas
   de copia del nombre; extensión, MIME (libmagic), tamaño, EXIF, metadatos PDF y de audio,
@@ -47,6 +54,8 @@ publicará al cerrar la Fase 4 (vigilancia de Descargas), según el plan.
 
 - Mover a o desde exFAT, FAT y FUSE: ya no falla por `chmod` ni por falta de enlaces duros.
 - Deshacer un movimiento hacia exFAT o FAT ya no lo rechaza por el redondeo del mtime.
+- La vigilancia ignora aperturas y lecturas: antes, analizar un archivo (o que Baloo o un
+  visor lo leyeran) lo volvía a encolar en bucle (~7 % de CPU en reposo; ahora 0,2 %).
 
 ### Seguridad
 

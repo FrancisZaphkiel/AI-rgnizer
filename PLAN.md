@@ -272,10 +272,10 @@ las que están mal y conviene repetir la evaluación tras limpiarlas.
 **Pruebas de cierre**
 - [x] Integración: crear un archivo en un directorio temporal vigilado genera una sugerencia.
 - [x] Archivos `.part` / `.crdownload` y el placeholder de 0 bytes de Firefox no generan sugerencia hasta completarse.
-- [ ] GUI y daemon abiertos a la vez no producen `database is locked` ni escrituras perdidas.
+- [x] GUI y daemon abiertos a la vez no producen `database is locked` ni escrituras perdidas.
 - [x] Modo automático solo mueve con confianza ≥ umbral; el resto queda pendiente.
-- [ ] El servicio reinicia tras fallo (`Restart=on-failure`) y no duplica sugerencias.
-- [ ] Llamadas D-Bus de prueba (listar, aceptar, deshacer) responden correctamente.
+- [x] El servicio reinicia tras fallo (`Restart=on-failure`) y no duplica sugerencias.
+- [x] Llamadas D-Bus de prueba (listar, aceptar, deshacer) responden correctamente.
 - [ ] Prueba manual en CachyOS: notificación visible en KDE Plasma (Wayland).
 
 **Release `v0.2.0`**

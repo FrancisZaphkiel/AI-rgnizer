@@ -270,3 +270,43 @@ def test_disk_plugged_unplugged_and_plugged_again(db: Database, workdir: Path) -
         stop.set()
         thread.join(timeout=5)
     assert [Path(o.suggestion.path).name for o in seen] == ["antiguo.txt", "nuevo.txt", "otra.txt"]
+
+
+def test_reading_a_file_does_not_reprocess_it(db: Database, downloads: Path) -> None:
+    """Abrir y leer (Baloo, un visor o el propio análisis) no es una llegada nueva."""
+    calls: list[str] = []
+
+    def classify(features: FileFeatures) -> Prediction:
+        calls.append(features.name.stem)
+        return fixed(None, 0)
+
+    monitor = DownloadMonitor(
+        [downloads],
+        WatchSettings(stable_seconds=0.1, reconcile_seconds=3600),
+        SuggestionQueue(db),
+        classify,
+    )
+    notices: list[Path] = []
+    original_notice = monitor.notice
+
+    def counting_notice(path: Path, now: float | None = None) -> None:
+        notices.append(path)
+        original_notice(path, now)
+
+    monitor.notice = counting_notice  # type: ignore[method-assign]
+    seen, stop, thread = run_monitor(monitor)
+    try:
+        time.sleep(0.3)
+        (downloads / "leido.txt").write_text("contenido")
+        assert wait_for(lambda: len(seen) == 1)
+        time.sleep(0.3)
+        notices.clear()
+        for _ in range(5):
+            (downloads / "leido.txt").read_text()
+            time.sleep(0.1)
+        time.sleep(0.3)
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+    assert notices == []  # las lecturas no generan eventos
+    assert calls == ["leido"]

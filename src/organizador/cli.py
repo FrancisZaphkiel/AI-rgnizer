@@ -3,27 +3,38 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import signal
 import sys
 import threading
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol, Self
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from organizador import __version__
-from organizador.actions import ActionError, ActionService
-from organizador.core.config import Settings, load_settings, set_config_value
+from organizador.actions import ActionError, ActionService, fsops
+from organizador.app import (
+    AppContext,
+    SuggestionError,
+    accept_suggestion,
+    classifier,
+    folder_names,
+    ignore_suggestion,
+    learning_exclude,
+    record_choice,
+    undo_action,
+)
+from organizador.core.config import set_config_value
 from organizador.core.paths import AppPaths
 from organizador.downloads import (
     DownloadMonitor,
     Outcome,
-    SuggestionNotFoundError,
     SuggestionQueue,
 )
 from organizador.downloads.queue import alternatives_of, available
@@ -38,22 +49,21 @@ from organizador.duplicates import (
 )
 from organizador.duplicates.names import NameGroup, SimilarNameFinder
 from organizador.features import FileFeatures, extract_features
-from organizador.learning.dataset import Dataset, build_dataset, find_project_dirs, label_for
-from organizador.learning.decide import decide, decide_many
+from organizador.learning.dataset import Dataset, build_dataset, find_project_dirs
+from organizador.learning.decide import decide_many
 from organizador.learning.evaluate import evaluate
-from organizador.learning.folders import FolderNames
 from organizador.learning.model import DestinationModel, NotEnoughDataError, Prediction
 from organizador.learning.patterns import FolderPattern, dominant_pattern, render
 from organizador.learning.review import Misplaced, find_misplaced, is_in
-from organizador.learning.store import IncompatibleModelError, ModelNotFoundError, ModelStore
+from organizador.learning.store import IncompatibleModelError, ModelNotFoundError
 from organizador.scanner import Scanner, ScanStats
 from organizador.scanner.mounts import filesystem_of
-from organizador.storage import Database
+from organizador.service import systemd
+from organizador.service.daemon import AlreadyRunningError, Daemon
 from organizador.storage.index import under_roots
 from organizador.storage.models import (
     Directory,
     DownloadSuggestion,
-    Feedback,
     File,
     SuggestionState,
 )
@@ -61,30 +71,17 @@ from organizador.storage.models import (
 log = logging.getLogger("organizador")
 
 
-@dataclass(slots=True)
-class AppContext:
-    paths: AppPaths
-    settings: Settings
-    db: Database
+def _load_model(ctx: AppContext) -> DestinationModel | None:
+    """Como ``app.load_model``, pero avisando en la terminal."""
+    try:
+        return ctx.models().load()
+    except (ModelNotFoundError, IncompatibleModelError) as exc:
+        print(f"aviso: {exc}; solo se usan tus reglas y los destinos por tipo", file=sys.stderr)
+        return None
 
-    @classmethod
-    def open(cls) -> AppContext:
-        paths = AppPaths.from_env()
-        paths.ensure()
-        db = Database(paths.database_file)
-        db.migrate()
-        return cls(paths, load_settings(paths), db)
 
-    def actions(self) -> ActionService:
-        service = ActionService(
-            self.db, self.settings.actions, self.paths.state_dir / "actions.lock", origin="cli"
-        )
-        for outcome in service.recover():
-            print(f"recuperada {outcome.action_id[:8]}: {outcome.state} — {outcome.detail}")
-        return service
-
-    def models(self) -> ModelStore:
-        return ModelStore(self.paths.data_dir / "models", keep=self.settings.learning.keep_models)
+def _record_choice(ctx: AppContext, path: Path, folder: Path, features: FileFeatures) -> None:
+    print("  " + record_choice(ctx, path, folder, features, _load_model))
 
 
 def _cmd_paths(_ctx: AppContext, _args: argparse.Namespace) -> int:
@@ -382,8 +379,9 @@ def _cmd_trash(ctx: AppContext, args: argparse.Namespace) -> int:
 
 
 def _cmd_undo(ctx: AppContext, args: argparse.Namespace) -> int:
-    result = ctx.actions().undo(args.action_id)
-    print(f"{result.action_id[:8]}  restaurado {result.destination}")
+    undo_id = undo_action(ctx, args.action_id)
+    [entry] = [e for e in ctx.actions().history(5) if e.id == undo_id]
+    print(f"{undo_id[:8]}  restaurado {entry.destination}")
     return 0
 
 
@@ -413,7 +411,7 @@ def _learning_dataset(ctx: AppContext, args: argparse.Namespace) -> Dataset | No
     if not args.no_scan and _cmd_scan(ctx, argparse.Namespace(roots=roots)) != 0:
         return None
     # Las carpetas vigiladas (Descargas) son lo que hay que organizar, no un ejemplo.
-    exclude = _learning_exclude(ctx)
+    exclude = learning_exclude(ctx)
     dataset = build_dataset(ctx.db, roots, ctx.settings.learning, exclude=exclude)
     stats = dataset.stats
     print(
@@ -499,91 +497,17 @@ def _print_prediction(path: Path, prediction: Prediction) -> None:
         print("  ✓ ya está en su carpeta")
 
 
-def _load_model(ctx: AppContext) -> DestinationModel | None:
-    """Modelo activo; sin él solo se usan las reglas de config.toml y los destinos por tipo."""
-    try:
-        return ctx.models().load()
-    except (ModelNotFoundError, IncompatibleModelError) as exc:
-        print(f"aviso: {exc}; solo se usan tus reglas y los destinos por tipo", file=sys.stderr)
-        return None
-
-
-def _learning_exclude(ctx: AppContext) -> list[Path]:
-    return [*ctx.settings.watched_dirs, *map(Path, ctx.settings.learning.exclude)]
-
-
-def _folder_names(ctx: AppContext, roots: Sequence[Path] | None = None) -> FolderNames:
-    """Carpetas indexadas que pueden ser destino (sin proyectos ni carpetas excluidas)."""
-    roots = (
-        list(roots) if roots is not None else [r.expanduser() for r in ctx.settings.indexed_dirs]
-    )
-    projects = [Path(p) for p in find_project_dirs(ctx.db, roots)]
-    return FolderNames.from_index(ctx.db, roots, exclude=[*_learning_exclude(ctx), *projects])
-
-
 def _cmd_suggest(ctx: AppContext, args: argparse.Namespace) -> int:
     model = _load_model(ctx)
     files = [f for f in args.files if f.is_file()]
     for missing in sorted(set(args.files) - set(files)):
         print(f"error: no es un archivo: {missing}", file=sys.stderr)
     features = [extract_features(f) for f in files]
-    predictions = decide_many(features, model, ctx.settings.learning, _folder_names(ctx))
+    predictions = decide_many(features, model, ctx.settings.learning, folder_names(ctx))
     for path, prediction in zip(files, predictions, strict=True):
         _print_prediction(path, prediction)
         _print_name_proposal(ctx, path, prediction)
     return 0 if len(files) == len(args.files) else 2
-
-
-def _retrain_from_index(ctx: AppContext) -> int | None:
-    """Reentrena con lo ya indexado (sin escanear); devuelve la versión o ``None``."""
-    roots = [r.expanduser() for r in ctx.settings.indexed_dirs if r.expanduser().is_dir()]
-    if not roots:
-        return None
-    exclude = _learning_exclude(ctx)
-    dataset = build_dataset(ctx.db, roots, ctx.settings.learning, exclude=exclude)
-    try:
-        model = DestinationModel.train(dataset, ctx.settings.learning)
-    except NotEnoughDataError:
-        return None
-    return ctx.models().save(model)
-
-
-def _record_choice(ctx: AppContext, path: Path, folder: Path, features: FileFeatures) -> None:
-    """Registra que ``path`` va en ``folder`` y hace que el modelo lo aprenda."""
-    learning = ctx.settings.learning
-    # El modelo aprende carpetas a la profundidad de max_depth bajo las raíces indexadas.
-    roots = [r.expanduser().resolve() for r in ctx.settings.indexed_dirs]
-    label = label_for(folder / path.name, roots, learning.max_depth) or str(folder)
-    model = _load_model(ctx) if ctx.models().current_version() else None
-    prediction = decide(features, model, learning, _folder_names(ctx))
-    suggested = prediction.best.label if prediction.best else None
-    with ctx.db.session() as s:
-        s.add(
-            Feedback(
-                file_path=str(path),
-                suggested=suggested,
-                chosen=label,
-                accepted=suggested == label,
-                confidence=prediction.suggestions[0].probability
-                if prediction.suggestions
-                else None,
-                features=features.to_json(),
-            )
-        )
-        s.flush()
-        pending = s.scalar(
-            select(func.count()).select_from(Feedback).where(Feedback.chosen == label)
-        )
-    if model is not None and model.learn(features, label):
-        print(f"  aprendido: {path.name} → {label} (modelo {ctx.models().save(model)})")
-        return
-    if (pending or 0) >= learning.retrain_after and (version := _retrain_from_index(ctx)):
-        print(f"  {label}: {pending} archivos elegidos, reentrenado (modelo {version})")
-        return
-    print(
-        f"  anotado: {path.name} → {label}; "
-        f"lo aprenderé tras {learning.retrain_after} archivos o con «organizador train»"
-    )
 
 
 def _cmd_teach(ctx: AppContext, args: argparse.Namespace) -> int:
@@ -620,7 +544,7 @@ def _cmd_review(ctx: AppContext, args: argparse.Namespace) -> int:
     roots = [r.expanduser() for r in args.roots] or [
         r.expanduser() for r in ctx.settings.indexed_dirs
     ]
-    folders = _folder_names(ctx, roots)
+    folders = folder_names(ctx, roots)
 
     def progress(done: int, total: int) -> None:
         print(f"\rrevisando {done}/{total}…", end="", file=sys.stderr, flush=True)
@@ -690,7 +614,7 @@ def _cmd_patterns(ctx: AppContext, args: argparse.Namespace) -> int:
         return 2
     if not args.no_scan and _cmd_scan(ctx, argparse.Namespace(roots=roots)) != 0:
         return 1
-    skipped = [*_learning_exclude(ctx), *map(Path, find_project_dirs(ctx.db, roots))]
+    skipped = [*learning_exclude(ctx), *map(Path, find_project_dirs(ctx.db, roots))]
     skipped = [p.expanduser().resolve() for p in skipped]
     shown = 0
     for folder, names in sorted(_names_by_folder(ctx, roots).items()):
@@ -761,22 +685,6 @@ def _add_learning_commands(add: Callable[[str, Command, str], argparse.ArgumentP
     revert.add_argument("version", type=int)
 
 
-def _classifier(ctx: AppContext) -> Callable[[FileFeatures], Prediction]:
-    """Decide destinos recargando el modelo cuando ``train`` o ``mv`` guardan otra versión."""
-    store = ctx.models()
-    loaded: dict[str, Any] = {"version": None, "model": None, "folders": _folder_names(ctx)}
-
-    def classify(features: FileFeatures) -> Prediction:
-        version = store.current_version()
-        if version != loaded["version"]:
-            loaded["version"] = version
-            loaded["model"] = _load_model(ctx) if version else None
-            loaded["folders"] = _folder_names(ctx)
-        return decide(features, loaded["model"], ctx.settings.learning, loaded["folders"])
-
-    return classify
-
-
 def _print_suggestion(row: DownloadSuggestion) -> None:
     if row.state == SuggestionState.AUTO:
         print(f"[{row.id}] {row.path}\n      movido a {row.chosen} ({row.confidence:.0%})")
@@ -803,7 +711,8 @@ def _cmd_watch(ctx: AppContext, args: argparse.Namespace) -> int:
     def mover(source: Path, folder: Path) -> str:
         return service.move(source, folder).action_id
 
-    monitor = DownloadMonitor(dirs, settings, SuggestionQueue(ctx.db), _classifier(ctx), mover)
+    classify = classifier(ctx, _load_model)
+    monitor = DownloadMonitor(dirs, settings, SuggestionQueue(ctx.db), classify, mover)
 
     def show(outcome: Outcome) -> None:
         _print_suggestion(outcome.suggestion)
@@ -866,51 +775,64 @@ def _cmd_pending(ctx: AppContext, _args: argparse.Namespace) -> int:
     return 0
 
 
-def _pending_row(ctx: AppContext, suggestion_id: int) -> DownloadSuggestion | None:
-    try:
-        row = SuggestionQueue(ctx.db).get(suggestion_id)
-    except SuggestionNotFoundError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return None
-    if row.state != SuggestionState.PENDING:
-        print(f"error: la sugerencia {row.id} ya está resuelta ({row.state})", file=sys.stderr)
-        return None
-    return row
-
-
 def _cmd_accept(ctx: AppContext, args: argparse.Namespace) -> int:
-    row = _pending_row(ctx, args.id)
-    if row is None:
+    try:
+        accepted = accept_suggestion(ctx, args.id, args.to)
+    except SuggestionError as exc:
+        print(f"error: {exc}", file=sys.stderr)
         return 2
-    target = args.to.expanduser() if args.to else row.destination and Path(row.destination)
-    if not target:
-        print("error: sin destino sugerido; indica la carpeta con --to", file=sys.stderr)
-        return 2
-    source = Path(row.path)
-    if not source.is_file():
-        SuggestionQueue(ctx.db).resolve(row.id, SuggestionState.GONE)
-        print(f"error: {source} ya no existe", file=sys.stderr)
-        return 1
-    target.mkdir(parents=True, exist_ok=True)
-    features = extract_features(source)
-    result = ctx.actions().move(source, target)
-    SuggestionQueue(ctx.db).resolve(
-        row.id, SuggestionState.ACCEPTED, chosen=str(target), action_id=result.action_id
-    )
-    print(f"{result.action_id[:8]}  {result.source} → {result.destination}")
-    _record_choice(ctx, result.destination, result.destination.parent.resolve(), features)
+    print(f"{accepted.action_id[:8]}  {accepted.source} → {accepted.destination}")
+    print(f"  {accepted.learned}")
     return 0
 
 
 def _cmd_ignore(ctx: AppContext, args: argparse.Namespace) -> int:
     code = 0
     for suggestion_id in args.ids:
-        if _pending_row(ctx, suggestion_id) is None:
+        try:
+            ignore_suggestion(ctx, suggestion_id)
+        except SuggestionError as exc:
+            print(f"error: {exc}", file=sys.stderr)
             code = 2
             continue
-        SuggestionQueue(ctx.db).resolve(suggestion_id, SuggestionState.IGNORED)
         print(f"[{suggestion_id}] ignorada: el archivo se queda donde está")
     return code
+
+
+def _cmd_daemon(ctx: AppContext, args: argparse.Namespace) -> int:
+    if not args.verbose:
+        logging.getLogger("organizador").setLevel(logging.INFO)
+
+    async def serve() -> None:
+        stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, stop.set)
+        await Daemon(ctx, notify=args.notify).serve(stop)
+
+    try:
+        asyncio.run(serve())
+    except AlreadyRunningError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def _cmd_service(_ctx: AppContext, args: argparse.Namespace) -> int:
+    if args.action == "install":
+        for path in systemd.install():
+            print(f"escrito {path}")
+        code = systemd.systemctl("daemon-reload")
+        if code == 0 and args.start:
+            code = systemd.systemctl("enable", "--now", systemd.UNIT_NAME)
+        return code
+    if args.action == "uninstall":
+        systemd.systemctl("disable", "--now", systemd.UNIT_NAME)
+        for path in systemd.installed_files():
+            fsops.remove_service_file(path)
+            print(f"quitado {path}")
+        return systemd.systemctl("daemon-reload")
+    return systemd.systemctl("status", "--no-pager", systemd.UNIT_NAME)
 
 
 def _add_watch_commands(add: Callable[[str, Command, str], argparse.ArgumentParser]) -> None:
@@ -932,6 +854,18 @@ def _add_watch_commands(add: Callable[[str, Command, str], argparse.ArgumentPars
     p = add("accept", _cmd_accept, "mueve el archivo de una sugerencia y lo aprende")
     p.add_argument("id", type=int)
     p.add_argument("--to", type=Path, metavar="CARPETA", help="otra carpeta en vez de la sugerida")
+
+    p = add("daemon", _cmd_daemon, "servicio: vigila, notifica y atiende la API D-Bus")
+    p.add_argument("--no-notify", dest="notify", action="store_false", help="sin notificaciones")
+
+    p = add("service", _cmd_service, "instala o quita el servicio de systemd --user")
+    service_sub = p.add_subparsers(dest="action", required=True)
+    install = service_sub.add_parser("install", help="instala, habilita y arranca el servicio")
+    install.add_argument(
+        "--no-start", dest="start", action="store_false", help="solo escribe los archivos"
+    )
+    service_sub.add_parser("uninstall", help="detiene el servicio y quita sus archivos")
+    service_sub.add_parser("status", help="estado del servicio")
 
     p = add("ignore", _cmd_ignore, "descarta sugerencias (el archivo no se mueve)")
     p.add_argument("ids", nargs="+", type=int)
@@ -1026,6 +960,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         format="%(levelname)s %(name)s: %(message)s",
     )
     ctx = AppContext.open()
+    ctx.report = print
     try:
         result: int = args.func(ctx, args)
     except ActionError as exc:

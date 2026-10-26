@@ -220,3 +220,23 @@ def discard_model_version(path: Path, models_dir: Path) -> None:
         os.unlink(path)
     except FileNotFoundError:
         return
+
+
+SERVICE_FILES = frozenset({"organizador.service", "io.github.organizador.Organizador.service"})
+
+
+def remove_service_file(path: Path) -> None:
+    """Borra la unidad systemd o la activación D-Bus que escribió ``service install``.
+
+    Solo acepta esos dos nombres dentro de ``systemd/user`` o ``dbus-1/services``.
+    """
+    parent = path.parent.parts[-2:]
+    if path.name not in SERVICE_FILES or parent not in {
+        ("systemd", "user"),
+        ("dbus-1", "services"),
+    }:
+        raise ValueError(f"No es un archivo del servicio de la aplicación: {path}")
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        return

@@ -5,7 +5,7 @@ tus carpetas, sugiere destinos para lo que llega a Descargas y detecta duplicado
 y reversible: nada se borra, solo se envía a la papelera.
 
 Estado: Fases 0–3 completas por CLI (núcleo, acciones seguras, duplicados y aprendizaje de
-costumbres); Fase 4 en curso (vigilancia de Descargas). Última versión publicada `v0.1.0`. Ver [`PLAN.md`](PLAN.md) y [`CHANGELOG.md`](CHANGELOG.md).
+costumbres); Fase 4 en curso (vigilancia de Descargas, servicio y API D-Bus). Última versión publicada `v0.1.0`. Ver [`PLAN.md`](PLAN.md) y [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Instalación para desarrollo (CachyOS / Arch)
 
@@ -98,6 +98,29 @@ auto_threshold = 0.9
 stable_seconds = 3.0
 reconcile_seconds = 300  # relectura completa por si inotify pierde eventos
 ```
+
+### Servicio y API D-Bus
+
+```fish
+uv run organizador service install    # unidad systemd --user (Restart=on-failure) y la arranca
+uv run organizador service status
+uv run organizador service uninstall
+uv run organizador daemon             # el mismo servicio en primer plano (--no-notify)
+```
+
+El servicio vigila las carpetas, muestra notificaciones con botones («Mover a X», «Elegir…»,
+«Ignorar»; «Deshacer» tras un movimiento automático) y atiende la API D-Bus que usará la
+interfaz gráfica: bus de sesión, nombre `io.github.organizador.Organizador`, interfaz
+versionada `io.github.organizador.Organizador1`. El protocolo está documentado en
+[`service/protocol.py`](src/organizador/service/protocol.py). Prueba rápida:
+
+```fish
+busctl --user call io.github.organizador.Organizador /io/github/organizador/Organizador \
+    io.github.organizador.Organizador1 ListPending
+```
+
+Todas las escrituras del servicio pasan por un único hilo, y solo puede haber un servicio
+por usuario.
 
 Nada sale del equipo (hay un test que bloquea los sockets de red) y el modelo solo sugiere:
 mover o renombrar siempre pasa por las acciones seguras y se puede deshacer.

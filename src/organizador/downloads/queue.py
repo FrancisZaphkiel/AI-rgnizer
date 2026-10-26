@@ -22,6 +22,20 @@ class SuggestionQueue:
     def __init__(self, db: Database) -> None:
         self._db = db
 
+    def knows(self, arrival: Arrival) -> bool:
+        """¿Esta llegada (ruta, tamaño, mtime) ya tiene sugerencia, en cualquier estado?"""
+        with self._db.session() as s:
+            return (
+                s.scalar(
+                    select(DownloadSuggestion.id).where(
+                        DownloadSuggestion.path == str(arrival.path),
+                        DownloadSuggestion.size == arrival.size,
+                        DownloadSuggestion.mtime_ns == arrival.mtime_ns,
+                    )
+                )
+                is not None
+            )
+
     def add(self, arrival: Arrival, prediction: Prediction) -> DownloadSuggestion | None:
         """Registra la llegada; ``None`` si esa misma llegada ya tenía sugerencia."""
         best = prediction.best

@@ -122,10 +122,27 @@ def test_open_for_writing_sees_this_process(tmp_path: Path) -> None:
 def test_tracker_waits_while_someone_writes(tmp_path: Path) -> None:
     path = tmp_path / "wget.iso"
     path.write_bytes(b"completo")
-    writing = {path}
-    tracker = StabilityTracker(stable_seconds=1, is_being_written=lambda p: p in writing)
+    st = path.stat()
+    writing = {(st.st_dev, st.st_ino)}
+    tracker = StabilityTracker(stable_seconds=1, writers=lambda: writing)
     tracker.notice(path, now=0)
     assert tracker.ready(now=5) == []
     writing.clear()
     assert tracker.ready(now=5.5) == []  # la espera se reinició en t=5 al seguir abierto
     assert [a.path for a in tracker.ready(now=6)] == [path]
+
+
+def test_tracker_drops_known_arrivals_without_checking_writers(tmp_path: Path) -> None:
+    path = tmp_path / "ya_sugerido.pdf"
+    path.write_bytes(b"x")
+    scans: list[int] = []
+
+    def writers() -> set[tuple[int, int]]:
+        scans.append(1)
+        return set()
+
+    tracker = StabilityTracker(stable_seconds=1, writers=writers, is_known=lambda _a: True)
+    tracker.notice(path, now=0)
+    assert tracker.ready(now=5) == []
+    assert scans == []  # ni siquiera se lee /proc
+    assert len(tracker) == 0

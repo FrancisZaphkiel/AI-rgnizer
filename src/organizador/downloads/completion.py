@@ -69,21 +69,21 @@ def has_partial_sibling(path: Path) -> bool:
     return any(base + suffix in siblings for suffix in TEMPORARY_SUFFIXES)
 
 
-def open_for_writing(path: Path, proc: Path = PROC) -> bool:
-    """Algún proceso visible tiene ``path`` abierto para escritura.
+FileId = tuple[int, int]  # (st_dev, st_ino)
+
+
+def files_open_for_writing(proc: Path = PROC) -> set[FileId]:
+    """Archivos que algún proceso visible tiene abiertos para escritura.
 
     Solo se ven los procesos del propio usuario (los demás dan ``PermissionError``),
-    que son los que descargan en su carpeta.
+    que son los que descargan en su carpeta. Se lee ``/proc`` una vez para todos los
+    candidatos de una pasada.
     """
-    try:
-        st = path.stat()
-    except OSError:
-        return False
-    target = (st.st_dev, st.st_ino)
     try:
         pids = [p for p in proc.iterdir() if p.name.isdigit()]
     except OSError:
-        return False
+        return set()
+    found: set[FileId] = set()
     for pid in pids:
         try:
             fds = list((pid / "fd").iterdir())
@@ -91,16 +91,24 @@ def open_for_writing(path: Path, proc: Path = PROC) -> bool:
             continue
         for fd in fds:
             try:
-                fst = fd.stat()
-                if (fst.st_dev, fst.st_ino) != target:
-                    continue
                 info = (pid / "fdinfo" / fd.name).read_text()
-            except OSError:
+                flags = next(line for line in info.splitlines() if line.startswith("flags:"))
+                if not int(flags.split()[1], 8) & _ACCESS_MODE:
+                    continue
+                st = fd.stat()
+            except (OSError, StopIteration, ValueError):
                 continue
-            for line in info.splitlines():
-                if line.startswith("flags:") and int(line.split()[1], 8) & _ACCESS_MODE:
-                    return True
-    return False
+            found.add((st.st_dev, st.st_ino))
+    return found
+
+
+def open_for_writing(path: Path, proc: Path = PROC) -> bool:
+    """Algún proceso visible tiene ``path`` abierto para escritura."""
+    try:
+        st = path.stat()
+    except OSError:
+        return False
+    return (st.st_dev, st.st_ino) in files_open_for_writing(proc)
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,8 +144,10 @@ class StabilityTracker:
     """Da por terminados los archivos que no cambian durante ``stable_seconds``."""
 
     stable_seconds: float
-    # Inyectable en tests; por defecto mira /proc.
-    is_being_written: Callable[[Path], bool] = open_for_writing
+    # Archivos abiertos para escritura; inyectable en tests (por defecto, /proc).
+    writers: Callable[[], set[FileId]] = files_open_for_writing
+    # Llegadas que ya tienen sugerencia: se descartan antes de cualquier trabajo.
+    is_known: Callable[[Arrival], bool] = lambda _a: False
     _seen: dict[Path, tuple[Arrival, float]] = field(default_factory=dict)
 
     def notice(self, path: Path, now: float) -> None:
@@ -158,18 +168,27 @@ class StabilityTracker:
 
     def ready(self, now: float) -> list[Arrival]:
         """Archivos estables y completos; dejan de seguirse al devolverlos."""
-        out: list[Arrival] = []
+        stable: list[Arrival] = []
         for path, (arrival, since) in list(self._seen.items()):
             if now - since < self.stable_seconds:
                 continue
             current = Arrival.of(path)
-            if current is None:
+            if current is None or self.is_known(current):
                 del self._seen[path]
             elif not current.same_content(arrival):
                 self._seen[path] = (current, now)  # sigue creciendo
-            elif has_partial_sibling(path) or self.is_being_written(path):
-                self._seen[path] = (current, now)  # marcador de Firefox o descarga en curso
+            elif has_partial_sibling(path):
+                self._seen[path] = (current, now)  # marcador de Firefox o similar
             else:
-                del self._seen[path]
-                out.append(current)
+                stable.append(current)
+        if not stable:
+            return []
+        writing = self.writers()
+        out: list[Arrival] = []
+        for arrival in stable:
+            if (arrival.device, arrival.inode) in writing:
+                self._seen[arrival.path] = (arrival, now)  # alguien sigue escribiendo
+            else:
+                del self._seen[arrival.path]
+                out.append(arrival)
         return out
