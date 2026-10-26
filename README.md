@@ -1,11 +1,52 @@
 # AI-rgnizer
 
-AI-rgnizer: organizador inteligente de archivos para Linux (probado en CachyOS). Aprende cómo organizas
-tus carpetas, sugiere destinos para lo que llega a Descargas y detecta duplicados. Todo es local
-y reversible: nada se borra, solo se envía a la papelera.
+**AI-rgnizer** es un organizador inteligente de archivos para Linux (probado en CachyOS con
+KDE Plasma). Aprende cómo organizas tus carpetas, sugiere destinos para lo que llega a
+Descargas, propone nombres según tus patrones y detecta duplicados. Todo es local y
+reversible: nada se borra, solo se envía a la papelera, y cada acción se puede deshacer.
 
-Estado: Fases 0–4 completas (núcleo, acciones seguras, duplicados, aprendizaje de costumbres y
-vigilancia de Descargas como servicio con API D-Bus); última versión publicada `v0.2.0`. Ver [`PLAN.md`](PLAN.md) y [`CHANGELOG.md`](CHANGELOG.md).
+Estado: Fases 0–5 completas y empaquetado como AppImage. Ver [`PLAN.md`](PLAN.md) y
+[`CHANGELOG.md`](CHANGELOG.md).
+
+## Instalación (AppImage)
+
+Descarga `AI-rgnizer-<versión>-x86_64.AppImage` (de las *releases* del repositorio o
+construyéndola, ver [Construir la AppImage](#construir-la-appimage)), guárdala en una ruta
+fija y ábrela:
+
+```fish
+mkdir -p ~/Aplicaciones
+mv AI-rgnizer-*-x86_64.AppImage ~/Aplicaciones/
+chmod +x ~/Aplicaciones/AI-rgnizer-*-x86_64.AppImage
+~/Aplicaciones/AI-rgnizer-*-x86_64.AppImage           # abre la ventana
+```
+
+- La primera vez se añade sola al **menú de aplicaciones** (con su icono). Si mueves el
+  archivo, ábrelo una vez desde la ruta nueva y el menú se actualiza.
+- **Ajustes → «Vigilar las descargas al iniciar sesión»** instala el servicio de systemd,
+  que ejecuta la propia AppImage. Por eso conviene una ruta fija: si la mueves, ábrela una
+  vez desde la ruta nueva y el servicio (y el menú) se actualizan solos.
+- La CLI es la misma AppImage con argumentos (`./AI-rgnizer-…AppImage scan ~/Documentos`).
+  En los ejemplos de más abajo, cambia `uv run airgnizer` por la ruta de la AppImage.
+- Lleva su propio Python y Qt; del sistema solo usa glibc, `libmagic` (paquete `file`) y
+  el escritorio. En KDE sigue el modo claro u oscuro y usa el selector de archivos nativo.
+- Para quitarla: desactiva el servicio y el inicio en Ajustes, ejecuta
+  `./AI-rgnizer-…AppImage desktop uninstall` y borra el archivo. Tus datos quedan en las
+  rutas de [Datos](#datos).
+
+### Si usabas «organizador» (≤ 0.3.0)
+
+El proyecto se llamaba **organizador**. La primera vez que abras AI-rgnizer:
+
+1. detiene y retira el servicio antiguo (`organizador.service`), su activación D-Bus y su
+   entrada de inicio;
+2. **traslada sin copiar** tus datos: `~/.config/organizador` → `~/.config/airgnizer`,
+   `~/.local/share/organizador/organizador.db` → `~/.local/share/airgnizer/airgnizer.db`, y
+   lo mismo en `~/.local/state` y `~/.cache`;
+3. vuelve a activar con el nombre nuevo lo que tuvieras activado (servicio, bandeja).
+
+Nunca sobrescribe datos que ya existan con el nombre nuevo, y no traslada nada mientras el
+servicio antiguo siga en marcha.
 
 ## Instalación para desarrollo (CachyOS / Arch)
 
@@ -133,9 +174,10 @@ mover o renombrar siempre pasa por las acciones seguras y se puede deshacer.
 ### Interfaz gráfica
 
 ```fish
-uv sync --extra gui                 # PySide6
+uv sync --extra gui               # PySide6-Essentials
 uv run airgnizer gui              # ventana principal + icono de bandeja
 uv run airgnizer gui --hidden     # solo la bandeja (lo usa el arranque con la sesión)
+uv run airgnizer desktop install  # entrada en el menú de aplicaciones (la AppImage lo hace sola)
 ```
 
 Las carpetas de **aprendizaje** (Ajustes → «Carpetas organizadas») y las de **búsqueda de
@@ -159,6 +201,19 @@ uv run pytest --cov
 ```
 
 Flujo de ramas: Git Flow (`feature/*` desde `develop`). Commits con Conventional Commits.
+
+### Construir la AppImage
+
+```fish
+packaging/appimage/build.sh            # → dist/AI-rgnizer-<versión>-x86_64.AppImage
+packaging/appimage/build.sh --appdir   # solo build/appimage/AI-rgnizer.AppDir (probar con su AppRun)
+```
+
+Usa el Python portable de uv (python-build-standalone), instala exactamente las versiones
+de `uv.lock`, quita de Qt y de Python lo que la aplicación no usa y empaqueta con
+[appimagetool](https://github.com/AppImage/appimagetool) (lo descarga la primera vez en
+`build/tools/`). Al publicar una etiqueta `v*`, el flujo de GitHub Actions
+`.github/workflows/appimage.yml` la construye y la adjunta a la *release*.
 
 ### Reglas de seguridad del código
 

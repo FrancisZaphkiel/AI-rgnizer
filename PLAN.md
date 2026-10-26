@@ -306,16 +306,19 @@ las que están mal y conviene repetir la evaluación tras limpiarlas.
 
 ### Fase 6 — Empaquetado y estabilización
 **Tareas**
-- `PKGBUILD` para instalar con `makepkg -si` en CachyOS; archivo `.desktop`, icono, unidad systemd.
+- ~~`PKGBUILD` para instalar con `makepkg -si`~~ → **AppImage** autocontenida (decisión del
+  usuario: un solo archivo descargable), con `.desktop`, icono y unidad systemd que apunta a
+  la propia AppImage. Renombrado del proyecto a **AI-rgnizer** con migración de datos.
 - Logs rotativos en `~/.local/state/airgnizer`.
 - Documentación de usuario y de desarrollo.
 - Corrección de errores reportados en uso real durante 1–2 semanas.
 
 **Pruebas de cierre**
-- [ ] `makepkg` construye e instala en un contenedor Arch limpio.
-- [ ] La app aparece en el menú de aplicaciones y arranca.
-- [ ] Desinstalar no deja el servicio activo.
-- [ ] Suite completa de tests en verde; cobertura global ≥ 80 %.
+- [x] La AppImage se construye (`packaging/appimage/build.sh`) y su contenido funciona
+  aislado del repositorio (CLI, escaneo, duplicados, GUI).
+- [ ] La app aparece en el menú de aplicaciones y arranca (prueba manual en KDE).
+- [x] Desinstalar no deja el servicio activo (`service uninstall`, `desktop uninstall`).
+- [x] Suite completa de tests en verde; cobertura global ≥ 80 % (86 %, 356 tests).
 - [ ] Prueba de aceptación: uso diario en el equipo CachyOS sin pérdida de archivos.
 
 **Release `v1.0.0`**

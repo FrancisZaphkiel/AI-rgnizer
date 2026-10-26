@@ -123,3 +123,24 @@ def test_menu_remover_refuses_other_files(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="No es la entrada"):
         fsops.remove_menu_entry(other)
     assert other.exists()
+
+
+def test_moving_the_appimage_rewrites_the_installed_unit(
+    isolated_home: Path, fake_systemctl: list[tuple[str, ...]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from airgnizer.service import systemd
+
+    old = isolated_home / "Descargas/AI-rgnizer.AppImage"
+    new = isolated_home / "Aplicaciones/AI-rgnizer.AppImage"
+    for image in (old, new):
+        image.parent.mkdir(parents=True, exist_ok=True)
+        image.write_bytes(b"\x7fELF")
+    monkeypatch.setenv("APPIMAGE", str(old))
+    assert not systemd.refresh_if_moved()  # no estaba instalado: no se instala
+    systemd.install()
+    assert not systemd.refresh_if_moved()  # al día
+
+    monkeypatch.setenv("APPIMAGE", str(new))
+    assert systemd.refresh_if_moved()
+    assert f"ExecStart={new} daemon" in systemd.unit_path().read_text()
+    assert ("try-restart", "airgnizer.service") in fake_systemctl

@@ -80,6 +80,23 @@ def install(command: list[str] | None = None) -> list[Path]:
     return [unit_path(), activation_path()]
 
 
+def refresh_if_moved() -> bool:
+    """Si la unidad instalada llama a otro programa (la AppImage se movió), la reescribe.
+
+    Devuelve ``True`` si la actualizó; no instala nada que no estuviera instalado.
+    """
+    try:
+        current = unit_path().read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if current == unit_text(daemon_command()):
+        return False
+    install()
+    systemctl("daemon-reload")
+    systemctl("try-restart", UNIT_NAME)  # solo si estaba en marcha (o intentándolo)
+    return True
+
+
 def installed_files() -> list[Path]:
     return [p for p in (unit_path(), activation_path()) if p.exists()]
 

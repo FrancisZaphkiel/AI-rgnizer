@@ -5,6 +5,29 @@ según [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+### Cambiado
+
+- **El proyecto pasa a llamarse AI-rgnizer.** Orden `airgnizer`, paquete `airgnizer`
+  (distribución `ai-rgnizer`), ID de aplicación y D-Bus `io.github.airgnizer.AIrgnizer`
+  (interfaz `…AIrgnizer1`), carpetas XDG `airgnizer`, unidad `airgnizer.service`.
+- La primera ejecución **traslada sin copiar** los datos de «organizador» (configuración,
+  base `organizador.db` → `airgnizer.db`, estado y caché), retira el servicio, la
+  activación D-Bus y la entrada de inicio antiguos y reactiva con el nombre nuevo lo que
+  estuviera activado. No migra mientras el servicio antiguo siga en marcha.
+- El extra `gui` depende de `pyside6-essentials` (solo los módulos de Qt que se usan) en
+  vez de todo PySide6.
+
+### Añadido
+
+- **AppImage** autocontenida (`packaging/appimage/build.sh`): Python portable, versiones
+  de `uv.lock` y Qt recortado. Sin argumentos abre la ventana; con argumentos es la CLI.
+  Flujo de GitHub Actions que la construye y la adjunta a cada *release* `v*`.
+- Desde la AppImage, la ventana se añade sola al **menú de aplicaciones** con su icono, y
+  el servicio, el inicio de sesión y el menú llaman al archivo `.AppImage`; si se mueve,
+  basta abrirla una vez desde la ruta nueva. En KDE usa el tema del portal (modo oscuro,
+  selector de archivos nativo).
+- `airgnizer desktop install|uninstall` e icono propio de la aplicación.
+
 ## [0.3.0] — 2026-10-26
 
 Fase 5: interfaz gráfica PySide6 con bandeja, y la CLI delegando en el servicio.

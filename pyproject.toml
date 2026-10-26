@@ -37,7 +37,7 @@ airgnizer-gui = "airgnizer.gui.app:main"
 
 [project.optional-dependencies]
 gui = [
-    "pyside6>=6.8",
+    "pyside6-essentials>=6.8",
 ]
 
 [dependency-groups]
@@ -50,7 +50,7 @@ dev = [
     "mypy>=1.13",
     "pre-commit>=4.0",
     "pytest-qt>=4.5.0",
-    "pyside6>=6.8",
+    "pyside6-essentials>=6.8",
 ]
 
 [build-system]
