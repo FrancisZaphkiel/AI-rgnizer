@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from organizador.cli import main
-from organizador.core.config import ScanSettings
-from organizador.duplicates.names import NameReport, SimilarNameFinder
-from organizador.scanner import Scanner
-from organizador.storage import Database
+from airgnizer.cli import main
+from airgnizer.core.config import ScanSettings
+from airgnizer.duplicates.names import NameReport, SimilarNameFinder
+from airgnizer.scanner import Scanner
+from airgnizer.storage import Database
 
 pytestmark = pytest.mark.integration
 
@@ -84,5 +84,5 @@ def test_cli_names_only_reports(isolated_home: Path, capsys: pytest.CaptureFixtu
     assert main(["names", str(isolated_home)]) == 0
     out = capsys.readouterr().out
     assert "1 grupos de nombres parecidos" in out
-    assert "organizador trash ARCHIVO" in out
+    assert "airgnizer trash ARCHIVO" in out
     assert a.exists() and b.exists()

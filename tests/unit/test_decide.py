@@ -4,11 +4,11 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from organizador.core.config import LearningSettings
-from organizador.features import FileFeatures
-from organizador.learning.decide import decide
-from organizador.learning.model import Prediction, Suggestion
-from organizador.learning.rules import Rule
+from airgnizer.core.config import LearningSettings
+from airgnizer.features import FileFeatures
+from airgnizer.learning.decide import decide
+from airgnizer.learning.model import Prediction, Suggestion
+from airgnizer.learning.rules import Rule
 
 
 class _Features:
@@ -79,8 +79,8 @@ def test_default_type_destinations_use_xdg_dirs(isolated_home: Path) -> None:
 
 
 def test_folder_name_layer_skips_archive_of_same_folder() -> None:
-    from organizador.features.name import analyse_name
-    from organizador.learning.folders import FolderNames
+    from airgnizer.features.name import analyse_name
+    from airgnizer.learning.folders import FolderNames
 
     class _Named(_Features):
         def __init__(self, name: str) -> None:

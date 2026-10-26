@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from organizador.learning.patterns import dominant_pattern, infer_pattern, render
+from airgnizer.learning.patterns import dominant_pattern, infer_pattern, render
 
 
 def test_plan_example() -> None:

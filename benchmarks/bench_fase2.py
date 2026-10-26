@@ -29,12 +29,12 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from organizador.core.config import DuplicateSettings, ScanSettings
-from organizador.duplicates import DuplicateFinder, KeepPolicy
-from organizador.duplicates.hashing import full_hash
-from organizador.duplicates.names import SimilarNameFinder
-from organizador.scanner import Scanner
-from organizador.storage import Database
+from airgnizer.core.config import DuplicateSettings, ScanSettings
+from airgnizer.duplicates import DuplicateFinder, KeepPolicy
+from airgnizer.duplicates.hashing import full_hash
+from airgnizer.duplicates.names import SimilarNameFinder
+from airgnizer.scanner import Scanner
+from airgnizer.storage import Database
 
 SEED = 20261025
 FILES_PER_DIR = 100
@@ -121,7 +121,7 @@ def conditions(root: Path) -> list[tuple[str, str]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--dir", type=Path, default=Path.home() / ".cache/organizador-bench")
+    parser.add_argument("--dir", type=Path, default=Path.home() / ".cache/airgnizer-bench")
     parser.add_argument("--files", type=int, default=50_000)
     parser.add_argument("--keep", action="store_true", help="no borrar el árbol al terminar")
     args = parser.parse_args()
@@ -130,7 +130,7 @@ def main() -> int:
     print(f"Generando {args.files} archivos en {tree}…", file=sys.stderr)
     n_files, total_bytes = generate(tree, args.files)
 
-    with tempfile.TemporaryDirectory(prefix="organizador-bench-db-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="airgnizer-bench-db-") as tmp:
         db = Database(Path(tmp) / "bench.db")
         db.migrate()
         scanner = Scanner(db, ScanSettings(), mounts=())

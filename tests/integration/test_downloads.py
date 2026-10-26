@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from organizador.actions import ActionService
-from organizador.core.config import WatchSettings
-from organizador.downloads import DownloadMonitor, Outcome, SuggestionQueue
-from organizador.downloads.completion import Arrival
-from organizador.features import FileFeatures
-from organizador.learning.model import Prediction, Source, Suggestion
-from organizador.storage import Database
-from organizador.storage.models import ActionState, SuggestionState
+from airgnizer.actions import ActionService
+from airgnizer.core.config import WatchSettings
+from airgnizer.downloads import DownloadMonitor, Outcome, SuggestionQueue
+from airgnizer.downloads.completion import Arrival
+from airgnizer.features import FileFeatures
+from airgnizer.learning.model import Prediction, Source, Suggestion
+from airgnizer.storage import Database
+from airgnizer.storage.models import ActionState, SuggestionState
 
 pytestmark = pytest.mark.integration
 

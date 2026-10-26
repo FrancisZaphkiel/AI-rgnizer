@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.airgnizer.AIrgnizer</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>AI-rgnizer</name>
+  <summary>Organizador inteligente de archivos que aprende tus costumbres</summary>
+  <description>
+    <p>
+      AI-rgnizer aprende dónde guardas cada tipo de archivo, sugiere a qué carpeta mover
+      lo que llega a tus descargas, propone nombres siguiendo tus patrones y encuentra
+      duplicados. Nunca borra: todo va a la papelera y se puede deshacer.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.airgnizer.AIrgnizer.desktop</launchable>
+  <developer id="io.github.airgnizer">
+    <name>Francisco Javier Tropa Huircan</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.4.0" date="2026-10-26"/>
+  </releases>
+</component>

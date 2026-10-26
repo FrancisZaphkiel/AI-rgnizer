@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from organizador.cli import human_size, main
+from airgnizer.cli import human_size, main
 
 pytestmark = pytest.mark.integration
 

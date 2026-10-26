@@ -5,17 +5,17 @@ from pathlib import Path
 
 import pytest
 
-from organizador.core import paths as xdg
-from organizador.core.config import Settings, load_settings, save_settings
-from organizador.core.paths import AppPaths
+from airgnizer.core import paths as xdg
+from airgnizer.core.config import Settings, load_settings, save_settings
+from airgnizer.core.paths import AppPaths
 
 
 def test_default_xdg_paths(isolated_home: Path) -> None:
     app = AppPaths.from_env()
-    assert app.config_dir == isolated_home / ".config/organizador"
-    assert app.data_dir == isolated_home / ".local/share/organizador"
-    assert app.state_dir == isolated_home / ".local/state/organizador"
-    assert app.cache_dir == isolated_home / ".cache/organizador"
+    assert app.config_dir == isolated_home / ".config/airgnizer"
+    assert app.data_dir == isolated_home / ".local/share/airgnizer"
+    assert app.state_dir == isolated_home / ".local/state/airgnizer"
+    assert app.cache_dir == isolated_home / ".cache/airgnizer"
 
 
 def test_ensure_creates_private_dirs(isolated_home: Path) -> None:
@@ -64,8 +64,8 @@ def test_invalid_settings_fall_back_to_defaults(isolated_home: Path) -> None:
 
 
 def test_invalid_watch_mode_falls_back_to_defaults(isolated_home: Path) -> None:
-    from organizador.core.config import load_settings
-    from organizador.core.paths import AppPaths
+    from airgnizer.core.config import load_settings
+    from airgnizer.core.paths import AppPaths
 
     paths = AppPaths.from_env()
     paths.ensure()
@@ -74,7 +74,7 @@ def test_invalid_watch_mode_falls_back_to_defaults(isolated_home: Path) -> None:
 
 
 def test_duplicate_roots_default_to_organized_folders() -> None:
-    from organizador.core.config import DuplicateSettings, Settings
+    from airgnizer.core.config import DuplicateSettings, Settings
 
     organized = Settings(indexed_dirs=[Path("/datos/Documentos")])
     assert organized.duplicate_roots() == [Path("/datos/Documentos")]

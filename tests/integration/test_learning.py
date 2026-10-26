@@ -8,17 +8,17 @@ from typing import Any
 
 import pytest
 
-from organizador.core.config import LearningSettings, ScanSettings
-from organizador.features import extract_features
-from organizador.learning import store as store_module
-from organizador.learning.dataset import Dataset, build_dataset, label_for
-from organizador.learning.evaluate import evaluate
-from organizador.learning.model import DestinationModel, NotEnoughDataError
-from organizador.learning.rules import apply_rules
-from organizador.learning.store import IncompatibleModelError, ModelNotFoundError, ModelStore
-from organizador.scanner import Scanner
-from organizador.storage import Database
-from organizador.storage.models import Feedback
+from airgnizer.core.config import LearningSettings, ScanSettings
+from airgnizer.features import extract_features
+from airgnizer.learning import store as store_module
+from airgnizer.learning.dataset import Dataset, build_dataset, label_for
+from airgnizer.learning.evaluate import evaluate
+from airgnizer.learning.model import DestinationModel, NotEnoughDataError
+from airgnizer.learning.rules import apply_rules
+from airgnizer.learning.store import IncompatibleModelError, ModelNotFoundError, ModelStore
+from airgnizer.scanner import Scanner
+from airgnizer.storage import Database
+from airgnizer.storage.models import Feedback
 
 pytestmark = pytest.mark.integration
 

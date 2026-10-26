@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from organizador.cli import main
-from organizador.core.config import LearningSettings, ScanSettings
-from organizador.learning.dataset import build_dataset
-from organizador.learning.folders import FolderNames
-from organizador.learning.review import find_misplaced
-from organizador.scanner import Scanner
-from organizador.storage import Database
+from airgnizer.cli import main
+from airgnizer.core.config import LearningSettings, ScanSettings
+from airgnizer.learning.dataset import build_dataset
+from airgnizer.learning.folders import FolderNames
+from airgnizer.learning.review import find_misplaced
+from airgnizer.scanner import Scanner
+from airgnizer.storage import Database
 
 pytestmark = pytest.mark.integration
 

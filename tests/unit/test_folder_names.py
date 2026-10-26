@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from organizador.learning.folders import FolderNames, folder_words
+from airgnizer.learning.folders import FolderNames, folder_words
 
 
 def test_folder_words_ignore_short_and_numeric() -> None:

@@ -16,15 +16,15 @@ from dbus_fast.annotations import DBusSignature, DBusStr, DBusUInt32
 from dbus_fast.errors import DBusError
 from dbus_fast.service import ServiceInterface, method, signal
 
-from organizador.actions import fsops
-from organizador.app import AppContext
-from organizador.core.config import LearningSettings, Settings, WatchSettings, save_settings
-from organizador.core.paths import AppPaths
-from organizador.service import systemd
-from organizador.service.daemon import AlreadyRunningError, Daemon
-from organizador.service.protocol import BUS_NAME, INTERFACE, OBJECT_PATH
-from organizador.storage import Database
-from organizador.storage.models import DownloadSuggestion
+from airgnizer.actions import fsops
+from airgnizer.app import AppContext
+from airgnizer.core.config import LearningSettings, Settings, WatchSettings, save_settings
+from airgnizer.core.paths import AppPaths
+from airgnizer.service import systemd
+from airgnizer.service.daemon import AlreadyRunningError, Daemon
+from airgnizer.service.protocol import BUS_NAME, INTERFACE, OBJECT_PATH
+from airgnizer.storage import Database
+from airgnizer.storage.models import DownloadSuggestion
 
 pytestmark = pytest.mark.integration
 
@@ -195,13 +195,13 @@ def test_list_accept_undo_ignore(home: Path, bus_address: str) -> None:
 
             with pytest.raises(DBusError) as missing:
                 await api.call_accept(999, "")  # type: ignore[attr-defined]
-            assert missing.value.type == "io.github.organizador.Error.NotFound"
+            assert missing.value.type == "io.github.airgnizer.Error.NotFound"
             with pytest.raises(DBusError) as resolved:
                 await api.call_ignore(by_name["raro.xyz"]["id"].value)  # type: ignore[attr-defined]
-            assert resolved.value.type == "io.github.organizador.Error.Invalid"
+            assert resolved.value.type == "io.github.airgnizer.Error.Invalid"
             with pytest.raises(DBusError) as no_target:
                 await api.call_accept(by_name["raro.xyz"]["id"].value, "")  # type: ignore[attr-defined]
-            assert no_target.value.type == "io.github.organizador.Error.Invalid"
+            assert no_target.value.type == "io.github.airgnizer.Error.Invalid"
             assert {Path(a["path"].value).name for a in added} <= {"cartola.pdf", "raro.xyz"}
 
     asyncio.run(scenario())
@@ -310,17 +310,17 @@ def test_reader_and_daemon_at_once_without_lock_errors(home: Path, bus_address: 
 
 
 def test_systemd_unit_and_activation(isolated_home: Path) -> None:
-    text = systemd.unit_text(["/usr/bin/organizador", "daemon"])
+    text = systemd.unit_text(["/usr/bin/airgnizer", "daemon"])
     assert "Type=dbus" in text and f"BusName={BUS_NAME}" in text
     assert "Restart=on-failure" in text
-    assert "ExecStart=/usr/bin/organizador daemon" in text
+    assert "ExecStart=/usr/bin/airgnizer daemon" in text
 
-    files = systemd.install(["/usr/bin/python", "-m", "organizador", "daemon"])
+    files = systemd.install(["/usr/bin/python", "-m", "airgnizer", "daemon"])
     assert files == [
-        isolated_home / ".config/systemd/user/organizador.service",
+        isolated_home / ".config/systemd/user/airgnizer.service",
         isolated_home / f".local/share/dbus-1/services/{BUS_NAME}.service",
     ]
-    assert "SystemdService=organizador.service" in files[1].read_text()
+    assert "SystemdService=airgnizer.service" in files[1].read_text()
     for path in systemd.installed_files():
         fsops.remove_service_file(path)
     assert systemd.installed_files() == []
@@ -368,7 +368,7 @@ def test_cli_delegates_to_running_service(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from organizador.cli import main
+    from airgnizer.cli import main
 
     monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS", daemon_thread)
     doc = home / "Descargas/informe.pdf"
@@ -381,7 +381,7 @@ def test_cli_delegates_to_running_service(
     assert "informe.pdf" in capsys.readouterr().out
     db = Database(AppPaths.from_env().database_file)
     with db.session() as s:
-        from organizador.storage.models import ActionJournal
+        from airgnizer.storage.models import ActionJournal
 
         origins = {e.origin for e in s.query(ActionJournal)}
     db.dispose()
@@ -396,7 +396,7 @@ def test_cli_delegates_to_running_service(
     assert main(["--local", "trash", str(home / "Documentos/Trabajo/informe.pdf")]) == 0
     db = Database(AppPaths.from_env().database_file)
     with db.session() as s:
-        from organizador.storage.models import ActionJournal
+        from airgnizer.storage.models import ActionJournal
 
         origins = {e.origin for e in s.query(ActionJournal)}
     db.dispose()
@@ -409,7 +409,7 @@ def test_cli_accept_ignore_teach_via_service(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from organizador.cli import main
+    from airgnizer.cli import main
 
     monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS", daemon_thread)
     (home / "Descargas/cartola.pdf").write_bytes(b"%PDF-1.4")
@@ -444,7 +444,7 @@ def test_service_with_other_database_is_not_used(
     home: Path, bus_address: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Un servicio de otro HOME (p. ej. una prueba) no es el escritor de nuestra base."""
-    from organizador.service.client import ServiceClient
+    from airgnizer.service.client import ServiceClient
 
     configure(home)
 
