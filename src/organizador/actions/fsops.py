@@ -8,6 +8,7 @@ función que borra comprueba antes que lo que elimina es exactamente lo esperado
 - ``complete_interrupted_copy``: idem, para recuperar una copia interrumpida.
 - ``discard_temp``: borra únicamente temporales creados por esta aplicación.
 - ``remove_trashinfo``: borra únicamente archivos ``.trashinfo`` de una papelera.
+- ``discard_model_version``: borra únicamente versiones antiguas del modelo de la aplicación.
 
 Ninguna función sobrescribe jamás un archivo existente.
 """
@@ -18,6 +19,7 @@ import ctypes
 import ctypes.util
 import errno
 import os
+import re
 import shutil
 from collections.abc import Callable
 from pathlib import Path
@@ -70,15 +72,38 @@ def fsync_dir(directory: Path) -> None:
     fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
     try:
         os.fsync(fd)
+    except OSError as exc:
+        # Algunos FUSE y sistemas de red no admiten fsync de un directorio.
+        if exc.errno not in (errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS):
+            raise
     finally:
         os.close(fd)
+
+
+# link() no existe en FAT, exFAT ni en muchos FUSE (ntfs-3g, exfat-fuse).
+_NO_HARDLINKS = frozenset({errno.EPERM, errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS})
 
 
 def _link_then_unlink(src: Path, dst: Path) -> None:
     # Alternativa atómica sin sobrescritura para sistemas sin RENAME_NOREPLACE:
     # link() falla con EEXIST si el destino existe.
-    os.link(src, dst, follow_symlinks=False)
+    try:
+        os.link(src, dst, follow_symlinks=False)
+    except OSError as exc:
+        if exc.errno not in _NO_HARDLINKS:
+            raise
+        _check_then_rename(src, dst)
+        return
     os.unlink(src)
+
+
+def _check_then_rename(src: Path, dst: Path) -> None:
+    # Último recurso en sistemas sin RENAME_NOREPLACE ni enlaces duros: comprobar y
+    # renombrar no es atómico, pero el bloqueo de ActionService impide que la propia
+    # aplicación cree ``dst`` entre medias.
+    if os.path.lexists(dst):
+        raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), str(dst))
+    src.rename(dst)
 
 
 def move_no_replace(src: Path, dst: Path) -> None:
@@ -123,7 +148,12 @@ def _copy_exclusive(src: Path, temp: Path) -> None:
         shutil.copyfileobj(fin, fout, _CHUNK)
         fout.flush()
         os.fsync(fout.fileno())
-    shutil.copystat(src, temp)
+    try:
+        shutil.copystat(src, temp)
+    except OSError:
+        # FAT/exFAT/NTFS sin permisos POSIX rechazan chmod o xattrs: basta con las fechas.
+        st = src.stat()
+        os.utime(temp, ns=(st.st_atime_ns, st.st_mtime_ns))
 
 
 def copy_verify_unlink(src: Path, dst: Path, temp: Path, expected_hash: str) -> None:
@@ -172,5 +202,41 @@ def remove_trashinfo(info_path: Path) -> None:
         raise ValueError(f"No es un archivo .trashinfo de una papelera: {info_path}")
     try:
         os.unlink(info_path)
+    except FileNotFoundError:
+        return
+
+
+MODEL_FILE = re.compile(r"model-\d{4,}\.joblib")
+
+
+def discard_model_version(path: Path, models_dir: Path) -> None:
+    """Borra una versión antigua del modelo; rechaza cualquier ruta fuera de ``models_dir``.
+
+    Los modelos son datos de la aplicación (se regeneran entrenando), nunca del usuario.
+    """
+    if path.parent != models_dir or not MODEL_FILE.fullmatch(path.name):
+        raise ValueError(f"No es una versión del modelo de la aplicación: {path}")
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        return
+
+
+SERVICE_FILES = frozenset({"organizador.service", "io.github.organizador.Organizador.service"})
+
+
+def remove_service_file(path: Path) -> None:
+    """Borra la unidad systemd o la activación D-Bus que escribió ``service install``.
+
+    Solo acepta esos dos nombres dentro de ``systemd/user`` o ``dbus-1/services``.
+    """
+    parent = path.parent.parts[-2:]
+    if path.name not in SERVICE_FILES or parent not in {
+        ("systemd", "user"),
+        ("dbus-1", "services"),
+    }:
+        raise ValueError(f"No es un archivo del servicio de la aplicación: {path}")
+    try:
+        os.unlink(path)
     except FileNotFoundError:
         return

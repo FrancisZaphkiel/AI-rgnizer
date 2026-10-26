@@ -84,6 +84,9 @@ class File(Base):
     perceptual_hash: Mapped[str | None] = mapped_column(String(16))
     image_width: Mapped[int | None] = mapped_column(Integer)
     image_height: Mapped[int | None] = mapped_column(Integer)
+    # Características para el motor de sugerencias (JSON de FileFeatures) y su versión.
+    features: Mapped[str | None] = mapped_column(Text)
+    features_version: Mapped[int | None] = mapped_column(Integer)
     # Último escaneo que escribió la fila (los archivos sin cambios no se reescriben).
     last_seen_scan: Mapped[int] = mapped_column(Integer, index=True)
 
@@ -190,6 +193,8 @@ class Feedback(Base):
     chosen: Mapped[str | None] = mapped_column(Text)
     accepted: Mapped[bool]
     confidence: Mapped[float | None] = mapped_column(Float)
+    # Características del archivo al dar la respuesta (el archivo puede moverse después).
+    features: Mapped[str | None] = mapped_column(Text)
     action_id: Mapped[str | None] = mapped_column(ForeignKey("actions_journal.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -215,3 +220,50 @@ class SettingKV(Base):
 
     key: Mapped[str] = mapped_column(String(128), primary_key=True)
     value: Mapped[str] = mapped_column(Text)
+
+
+class SuggestionState(enum.StrEnum):
+    PENDING = "pending"
+    # El usuario la aceptó (o eligió otra carpeta) y el archivo se movió.
+    ACCEPTED = "accepted"
+    # Movido sin preguntar por el modo automático (confianza ≥ umbral).
+    AUTO = "auto"
+    IGNORED = "ignored"
+    # El archivo desapareció o cambió antes de decidir.
+    GONE = "gone"
+
+
+class DownloadSuggestion(Base):
+    """Archivo llegado a una carpeta vigilada con su destino propuesto (Fase 4).
+
+    La huella (ruta, tamaño, mtime) identifica la llegada: reiniciar el servicio
+    vuelve a ver el mismo archivo y no crea otra sugerencia.
+    """
+
+    __tablename__ = "suggestions"
+    __table_args__ = (
+        UniqueConstraint("path", "size", "mtime_ns", "inode"),
+        Index("ix_suggestions_state", "state"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    path: Mapped[str] = mapped_column(Text)
+    size: Mapped[int] = mapped_column(BigInteger)
+    mtime_ns: Mapped[int] = mapped_column(BigInteger)
+    inode: Mapped[int] = mapped_column(BigInteger)
+    device: Mapped[int] = mapped_column(BigInteger)
+    # Primera sugerencia (None si el motor se abstuvo) y de dónde sale.
+    destination: Mapped[str | None] = mapped_column(Text)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    source: Mapped[str | None] = mapped_column(String(16))
+    # JSON: [[carpeta, probabilidad], ...] con todas las sugerencias.
+    alternatives: Mapped[str] = mapped_column(Text, default="[]")
+    state: Mapped[SuggestionState] = mapped_column(
+        _str_enum(SuggestionState), default=SuggestionState.PENDING
+    )
+    chosen: Mapped[str | None] = mapped_column(Text)
+    action_id: Mapped[str | None] = mapped_column(ForeignKey("actions_journal.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )

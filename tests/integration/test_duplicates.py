@@ -432,7 +432,7 @@ def test_user_selected_keeper_is_respected(
 
 
 def test_index_writer_skips_rows_whose_signature_changed(db: Database, root: Path) -> None:
-    from organizador.duplicates.index import IndexWriter
+    from organizador.storage.index import IndexWriter
 
     _write(root / "Otros/a.bin", b"a")
     _write(root / "Otros/b.bin", b"b")

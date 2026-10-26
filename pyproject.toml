@@ -1,6 +1,6 @@
 [project]
 name = "organizador"
-version = "0.1.0"
+version = "0.2.0"
 description = "Organizador inteligente de archivos para Linux: aprende tus costumbres, sugiere destinos y detecta duplicados."
 readme = "README.md"
 license = "MIT"
@@ -20,6 +20,13 @@ dependencies = [
     "pillow>=11",
     "imagehash>=4.3",
     "rapidfuzz>=3.10",
+    "pypdf>=5.1",
+    "mutagen>=1.47",
+    "python-magic>=0.4.27",
+    "scikit-learn>=1.6",
+    "joblib>=1.4",
+    "watchdog>=6.0",
+    "dbus-fast>=5.2",
 ]
 
 [project.scripts]
@@ -62,8 +69,12 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR2004", "S101", "PLC0415"]
+# Servidor D-Bus falso: nombres y firmas impuestos por org.freedesktop.Notifications.
+"tests/integration/test_service.py" = ["N802", "PLR0917"]
 "src/organizador/storage/migrations/**" = ["N999"]
-"src/organizador/actions/fsops.py" = ["TID251", "PTH108"] # único módulo con borrados auditados
+"src/organizador/actions/fsops.py" = ["TID251", "PTH108"]
+# D-Bus: nombres de métodos, propiedades y señales en CamelCase.
+"src/organizador/service/api.py" = ["N802"] # único módulo con borrados auditados
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "os.remove".msg = "Prohibido: los borrados solo se permiten en organizador.actions.fsops."
@@ -79,7 +90,7 @@ packages = ["organizador"]
 warn_unreachable = true
 
 [[tool.mypy.overrides]]
-module = ["blake3.*"]
+module = ["blake3.*", "sklearn.*", "scipy.*", "joblib.*"]
 ignore_missing_imports = true
 
 # --- Pruebas -----------------------------------------------------------------

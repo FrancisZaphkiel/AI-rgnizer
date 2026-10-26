@@ -417,3 +417,64 @@ def test_discard_temp_refuses_foreign_files(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="trashinfo"):
         fsops.remove_trashinfo(victim)
     assert victim.exists()
+
+
+def test_move_on_filesystem_without_permissions_or_hardlinks(
+    service: ActionService, workdir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """exFAT/FAT o FUSE: sin RENAME_NOREPLACE, sin link() y chmod rechazado."""
+    src = _write(workdir / "Descargas/video.mkv", os.urandom(50_000))
+    payload, mtime = src.read_bytes(), src.stat().st_mtime_ns
+    _simulate_cross_device(monkeypatch, src)
+    monkeypatch.setattr(fsops, "_renameat2", None)
+
+    def no_link(*_a: Any, **_k: Any) -> None:
+        raise PermissionError(1, "Operation not permitted")
+
+    def no_copystat(*_a: Any, **_k: Any) -> None:
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(fsops.os, "link", no_link)
+    monkeypatch.setattr(fsops.shutil, "copystat", no_copystat)
+    (workdir / "Documentos/video.mkv").write_bytes(b"ocupado")
+
+    result = service.move(src, workdir / "Documentos")
+    assert result.destination.name == "video (2).mkv"
+    assert result.destination.read_bytes() == payload
+    assert result.destination.stat().st_mtime_ns == mtime
+    assert (workdir / "Documentos/video.mkv").read_bytes() == b"ocupado"
+    assert not src.exists()
+
+
+def test_check_then_rename_never_overwrites(tmp_path: Path) -> None:
+    src, dst = tmp_path / "a", tmp_path / "b"
+    src.write_text("a")
+    dst.write_text("b")
+    with pytest.raises(FileExistsError):
+        fsops._check_then_rename(src, dst)
+    assert dst.read_text() == "b"
+
+
+def test_undo_after_move_to_low_resolution_filesystem(
+    service: ActionService, workdir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """exFAT redondea el mtime a 10 ms y FAT a 2 s: deshacer debe seguir funcionando."""
+    src = _write(workdir / "Descargas/notas.txt", b"hola")
+    os.utime(src, ns=(src.stat().st_atime_ns, 1_700_000_000_123_456_789))
+    result = service.move(src, workdir / "Documentos")
+    rounded = 1_700_000_000_000_000_000 + 2_000_000_000  # FAT redondea a 2 s hacia arriba
+    os.utime(result.destination, ns=(rounded, rounded))
+    service.undo(result.action_id)
+    assert src.read_bytes() == b"hola"
+
+
+def test_undo_refuses_changed_content_despite_tolerance(
+    service: ActionService, workdir: Path
+) -> None:
+    src = _write(workdir / "Descargas/notas.txt", b"hola")
+    result = service.move(src, workdir / "Documentos")
+    st = result.destination.stat()
+    result.destination.write_bytes(b"HOLA")  # mismo tamaño, otro contenido
+    os.utime(result.destination, ns=(st.st_atime_ns, st.st_mtime_ns))
+    with pytest.raises(SourceChangedError):
+        service.undo(result.action_id)
