@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
-from sqlalchemy import ColumnElement, Table, and_, bindparam, or_, update
+from sqlalchemy import ColumnElement, Table, and_, bindparam, false, or_, update
 from sqlalchemy.orm import Session
 
 from organizador.storage.models import Directory, File
@@ -32,7 +32,7 @@ def under_roots(roots: Sequence[Path]) -> ColumnElement[bool]:
         prefix = str(root).rstrip("/") + "/"
         clauses.append(Directory.path == str(root))
         clauses.append(Directory.path.startswith(prefix, autoescape=True))
-    return or_(*clauses)
+    return or_(false(), *clauses)  # sin raíces no coincide nada
 
 
 # Sobre la tabla (Core), sin la sincronización de sesión del ORM, que era el cuello de botella.

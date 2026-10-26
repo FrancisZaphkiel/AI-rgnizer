@@ -54,7 +54,7 @@ class Suggestion:
 
 
 # De dónde sale la primera sugerencia (ver ``decide.py`` para el orden de prioridad).
-Source = Literal["configuración", "regla", "modelo", "tipo"]
+Source = Literal["configuración", "regla", "modelo", "carpeta", "tipo"]
 
 
 @dataclass(frozen=True, slots=True)

@@ -76,3 +76,22 @@ def test_default_type_destinations_use_xdg_dirs(isolated_home: Path) -> None:
     defaults = LearningSettings().type_destinations
     assert defaults["tipo:image"] == str(isolated_home / "Pictures")
     assert defaults["ext:pdf"] == str(isolated_home / "Documents")
+
+
+def test_folder_name_layer_skips_archive_of_same_folder() -> None:
+    from organizador.features.name import analyse_name
+    from organizador.learning.folders import FolderNames
+
+    class _Named(_Features):
+        def __init__(self, name: str) -> None:
+            self.name = analyse_name(name)
+            super().__init__(*(f"pal:{w}" for w in self.name.words))
+
+    bare = LearningSettings(rules={}, type_destinations={})
+    folders = FolderNames(["/d/Salud", "/d/SalaU figma"])
+    receta: Any = _Named("Salud_receta.pdf")
+    archive: Any = _Named("SalaU figma.zip")
+    found = decide(receta, None, bare, folders)
+    assert found.source == "carpeta" and found.best is not None
+    assert found.best.label == "/d/Salud"
+    assert decide(archive, None, bare, folders).abstained

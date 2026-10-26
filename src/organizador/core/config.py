@@ -86,6 +86,9 @@ class LearningSettings:
     feedback_weight: float = 5.0
     # Versiones del modelo que se conservan para poder revertir.
     keep_models: int = 5
+    # «organizador review»: probabilidad mínima del modelo para proponer mover un archivo
+    # que ya está organizado (más exigente que abstain_below: el usuario ya eligió).
+    review_min_confidence: float = 0.9
     # Correcciones hacia una carpeta nueva que disparan un reentrenamiento automático.
     retrain_after: int = 3
     # Reglas del usuario «token → carpeta» (p. ej. "ext:jpg" = "~/Imágenes"): mandan

@@ -28,10 +28,12 @@ from organizador.duplicates import (
 )
 from organizador.duplicates.names import NameGroup, SimilarNameFinder
 from organizador.features import FileFeatures, extract_features
-from organizador.learning.dataset import Dataset, build_dataset, label_for
+from organizador.learning.dataset import Dataset, build_dataset, find_project_dirs, label_for
 from organizador.learning.decide import decide, decide_many
 from organizador.learning.evaluate import evaluate
+from organizador.learning.folders import FolderNames
 from organizador.learning.model import DestinationModel, NotEnoughDataError, Prediction
+from organizador.learning.review import Misplaced, find_misplaced, is_in
 from organizador.learning.store import IncompatibleModelError, ModelNotFoundError, ModelStore
 from organizador.scanner import Scanner, ScanStats
 from organizador.storage import Database
@@ -392,7 +394,7 @@ def _learning_dataset(ctx: AppContext, args: argparse.Namespace) -> Dataset | No
     if not args.no_scan and _cmd_scan(ctx, argparse.Namespace(roots=roots)) != 0:
         return None
     # Las carpetas vigiladas (Descargas) son lo que hay que organizar, no un ejemplo.
-    exclude = [*ctx.settings.watched_dirs, *map(Path, ctx.settings.learning.exclude)]
+    exclude = _learning_exclude(ctx)
     dataset = build_dataset(ctx.db, roots, ctx.settings.learning, exclude=exclude)
     stats = dataset.stats
     print(
@@ -450,6 +452,7 @@ _SOURCE_TEXT = {
     "configuración": "por tu regla en config.toml",
     "regla": "aprendido",
     "modelo": "sugerencia del modelo",
+    "carpeta": "hay una carpeta con ese nombre",
     "tipo": "destino por defecto para este tipo de archivo",
 }
 
@@ -461,7 +464,7 @@ def _print_prediction(path: Path, prediction: Prediction) -> None:
     for n, s in enumerate(prediction.suggestions, start=1):
         first = n == 1 and not prediction.abstained
         marker = "→" if first else " "
-        shown = "  —" if first and prediction.source in {"configuración", "tipo"} else ""
+        shown = "  —" if first and prediction.source in {"configuración", "carpeta", "tipo"} else ""
         print(f"  {marker} {shown or f'{s.probability:>4.0%}'}  {s.label}")
     if prediction.abstained:
         return
@@ -472,6 +475,9 @@ def _print_prediction(path: Path, prediction: Prediction) -> None:
     elif prediction.reasons:
         detail += " (" + ", ".join(token for token, _ in prediction.reasons) + ")"
     print(f"  {detail}")
+    best = prediction.best
+    if best is not None and is_in(path.expanduser().resolve(), best.label):
+        print("  ✓ ya está en su carpeta")
 
 
 def _load_model(ctx: AppContext) -> DestinationModel | None:
@@ -483,15 +489,27 @@ def _load_model(ctx: AppContext) -> DestinationModel | None:
         return None
 
 
+def _learning_exclude(ctx: AppContext) -> list[Path]:
+    return [*ctx.settings.watched_dirs, *map(Path, ctx.settings.learning.exclude)]
+
+
+def _folder_names(ctx: AppContext, roots: Sequence[Path] | None = None) -> FolderNames:
+    """Carpetas indexadas que pueden ser destino (sin proyectos ni carpetas excluidas)."""
+    roots = (
+        list(roots) if roots is not None else [r.expanduser() for r in ctx.settings.indexed_dirs]
+    )
+    projects = [Path(p) for p in find_project_dirs(ctx.db, roots)]
+    return FolderNames.from_index(ctx.db, roots, exclude=[*_learning_exclude(ctx), *projects])
+
+
 def _cmd_suggest(ctx: AppContext, args: argparse.Namespace) -> int:
     model = _load_model(ctx)
     files = [f for f in args.files if f.is_file()]
     for missing in sorted(set(args.files) - set(files)):
         print(f"error: no es un archivo: {missing}", file=sys.stderr)
     features = [extract_features(f) for f in files]
-    for path, prediction in zip(
-        files, decide_many(features, model, ctx.settings.learning), strict=True
-    ):
+    predictions = decide_many(features, model, ctx.settings.learning, _folder_names(ctx))
+    for path, prediction in zip(files, predictions, strict=True):
         _print_prediction(path, prediction)
     return 0 if len(files) == len(args.files) else 2
 
@@ -501,7 +519,7 @@ def _retrain_from_index(ctx: AppContext) -> int | None:
     roots = [r.expanduser() for r in ctx.settings.indexed_dirs if r.expanduser().is_dir()]
     if not roots:
         return None
-    exclude = [*ctx.settings.watched_dirs, *map(Path, ctx.settings.learning.exclude)]
+    exclude = _learning_exclude(ctx)
     dataset = build_dataset(ctx.db, roots, ctx.settings.learning, exclude=exclude)
     try:
         model = DestinationModel.train(dataset, ctx.settings.learning)
@@ -517,7 +535,7 @@ def _record_choice(ctx: AppContext, path: Path, folder: Path, features: FileFeat
     roots = [r.expanduser().resolve() for r in ctx.settings.indexed_dirs]
     label = label_for(folder / path.name, roots, learning.max_depth) or str(folder)
     model = _load_model(ctx) if ctx.models().current_version() else None
-    prediction = decide(features, model, learning)
+    prediction = decide(features, model, learning, _folder_names(ctx))
     suggested = prediction.best.label if prediction.best else None
     with ctx.db.session() as s:
         s.add(
@@ -558,6 +576,58 @@ def _cmd_teach(ctx: AppContext, args: argparse.Namespace) -> int:
     return 0
 
 
+def _ask_move(item: Misplaced) -> str | None:
+    """Destino elegido para un archivo mal ubicado, o ``None`` para dejarlo."""
+    options = [s.label for s in item.prediction.suggestions]
+    while True:
+        try:
+            answer = input(f"  ¿Mover a {item.target}? [s/N/nº de alternativa] ").strip().lower()
+        except EOFError:
+            return None
+        if answer in {"s", "si", "sí", "y"}:
+            return item.target
+        if answer in {"", "n", "no"}:
+            return None
+        if answer.isdigit() and 1 <= int(answer) <= len(options):
+            return options[int(answer) - 1]
+        print("  Respuesta no válida.")
+
+
+def _cmd_review(ctx: AppContext, args: argparse.Namespace) -> int:
+    dataset = _learning_dataset(ctx, args)
+    if dataset is None:
+        return 2
+    roots = [r.expanduser() for r in args.roots] or [
+        r.expanduser() for r in ctx.settings.indexed_dirs
+    ]
+    folders = _folder_names(ctx, roots)
+
+    def progress(done: int, total: int) -> None:
+        print(f"\rrevisando {done}/{total}…", end="", file=sys.stderr, flush=True)
+
+    report = find_misplaced(dataset, ctx.settings.learning, folders, progress=progress)
+    found = report.misplaced
+    print("", file=sys.stderr)
+    service = ctx.actions() if args.move else None
+    for index, item in enumerate(found, start=1):
+        print(f"\n[{index}] posible mala ubicación (ahora en {item.current})")
+        _print_prediction(item.path, item.prediction)
+        if service is None:
+            continue
+        target = _ask_move(item)
+        if target is None:
+            continue
+        Path(target).mkdir(parents=True, exist_ok=True)
+        features = extract_features(item.path)
+        result = service.move(item.path, Path(target))
+        print(f"  {result.action_id[:8]}  {result.source} → {result.destination}")
+        _record_choice(ctx, result.destination, result.destination.parent.resolve(), features)
+    print(f"\n{len(found)} archivos posiblemente mal ubicados de {report.reviewed} revisados.")
+    if found and not args.move:
+        print("Para moverlos uno a uno, con confirmación: organizador review --move")
+    return 0
+
+
 def _cmd_model(ctx: AppContext, args: argparse.Namespace) -> int:
     store = ctx.models()
     if args.action == "revert":
@@ -592,6 +662,11 @@ def _add_learning_commands(add: Callable[[str, Command, str], argparse.ArgumentP
         p = add(name, command, help_text)
         p.add_argument("roots", nargs="*", type=Path)
         p.add_argument("--no-scan", action="store_true", help="usa el índice sin reescanear")
+
+    p = add("review", _cmd_review, "busca archivos posiblemente mal ubicados")
+    p.add_argument("roots", nargs="*", type=Path)
+    p.add_argument("--no-scan", action="store_true", help="usa el índice sin reescanear")
+    p.add_argument("--move", action="store_true", help="pregunta archivo por archivo si moverlo")
 
     p = add("suggest", _cmd_suggest, "sugiere carpetas para archivos (no los mueve)")
     p.add_argument("files", nargs="+", type=Path)
