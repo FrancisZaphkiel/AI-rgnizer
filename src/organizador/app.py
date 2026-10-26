@@ -71,6 +71,13 @@ class AppContext:
 # --- aprendizaje ------------------------------------------------------------------------
 
 
+def duplicate_exclude(ctx: AppContext, roots: Sequence[Path]) -> list[Path]:
+    """Carpetas que la búsqueda de duplicados salta: los proyectos de software."""
+    if not ctx.settings.duplicates.skip_projects or not roots:
+        return []
+    return [Path(p) for p in find_project_dirs(ctx.db, roots)]
+
+
 def load_model(ctx: AppContext) -> DestinationModel | None:
     """Modelo activo; sin él solo se usan las reglas de config.toml y los destinos por tipo."""
     key = _model_key(ctx)

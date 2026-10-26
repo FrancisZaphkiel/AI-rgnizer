@@ -54,6 +54,9 @@ class DuplicateSettings:
     image_max_distance: int = 4
     # Dónde buscar duplicados; vacía: en las carpetas organizadas (``indexed_dirs``).
     dirs: list[str] = field(default_factory=list)
+    # Saltar proyectos de software (.git, pyproject.toml, package.json…): quitar un
+    # archivo repetido de un repositorio lo rompe.
+    skip_projects: bool = True
 
 
 def default_type_destinations() -> dict[str, str]:

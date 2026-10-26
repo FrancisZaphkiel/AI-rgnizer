@@ -24,6 +24,7 @@ from organizador.app import (
     AppContext,
     SuggestionError,
     classifier,
+    duplicate_exclude,
     folder_names,
     folder_pattern,
     learning_exclude,
@@ -238,7 +239,8 @@ def _cmd_dupes(ctx: AppContext, args: argparse.Namespace) -> int:
         duplicates = replace(duplicates, min_size=args.min_size)
     policy = KeepPolicy(settings.indexed_dirs, settings.watched_dirs)
     try:
-        report = DuplicateFinder(ctx.db, duplicates, policy).find(roots)
+        skipped = duplicate_exclude(ctx, roots)
+        report = DuplicateFinder(ctx.db, duplicates, policy).find(roots, exclude=skipped)
     except KeyboardInterrupt:
         print("\nbúsqueda cancelada", file=sys.stderr)
         return 130
@@ -255,6 +257,11 @@ def _cmd_dupes(ctx: AppContext, args: argparse.Namespace) -> int:
     )
     if stats.stale:
         print(f"{stats.stale} archivos cambiaron desde el escaneo y se omitieron.")
+    if skipped:
+        print(
+            f"Se omitieron {len(skipped)} proyectos de software "
+            "([duplicates] skip_projects = false para incluirlos)."
+        )
     if not args.trash:
         return 0
 

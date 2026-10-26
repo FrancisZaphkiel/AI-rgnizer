@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from organizador.app import AppContext, reload_settings
+from organizador.app import AppContext, duplicate_exclude, reload_settings
 from organizador.core.config import set_config_value
 from organizador.duplicates import DuplicateFinder, DuplicateGroup, KeepPolicy, trash_redundant
 from organizador.duplicates.finder import DuplicateReport
@@ -57,8 +57,12 @@ def find_duplicates(
             progress=lambda st: progress(f"Escaneando: {st.files_seen} archivos…"),
         )
     policy = KeepPolicy(ctx.settings.indexed_dirs, ctx.settings.watched_dirs)
+    skipped = duplicate_exclude(ctx, roots)
+    if skipped:
+        progress(f"Se omiten {len(skipped)} proyectos de software (git, package.json…)")
     return DuplicateFinder(ctx.db, ctx.settings.duplicates, policy).find(
         roots,
+        exclude=skipped,
         cancel=cancel,
         progress=lambda st: progress(
             f"Comparando contenido: {human_size(st.bytes_hashed)} leídos…"
@@ -235,9 +239,14 @@ class DuplicatesView(QWidget):
             child.setText(1, human_size(f.size))
             child.setText(2, pretty(f.path.parent))
             child.setToolTip(2, str(f.path))
-            child.setToolTip(
-                0, f"Se conserva: {group.keep_reason}" if is_keep else "Va a la papelera"
-            )
+            if is_keep:
+                tip = f"Se conserva: {group.keep_reason}"
+            elif not f.removable:
+                tip = "Se queda: no tienes permiso para quitarla de su carpeta"
+                child.setText(0, "🔒 " + f.path.name)
+            else:
+                tip = "Va a la papelera"
+            child.setToolTip(0, tip)
             child.setData(0, _ROLE, (index, f))
             font = child.font(0)
             font.setBold(is_keep)

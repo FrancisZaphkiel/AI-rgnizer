@@ -30,6 +30,14 @@ según [SemVer](https://semver.org/lang/es/).
 
 ### Corregido
 
+- Duplicados: las copias en carpetas sin permiso de escritura (p. ej. de root, clonadas
+  con sudo) ya no se proponen para la papelera; si hay alguna, es la que se conserva, y
+  un grupo sin nada que quitar no se muestra. La papelera explica «No tienes permiso para
+  quitar archivos de … (pertenece a root)» en vez de un error sobre `/home/.Trash-1000`.
+- Duplicados: se saltan los **proyectos de software** (`.git`, `pyproject.toml`,
+  `package.json`…), donde quitar un archivo repetido rompe el proyecto
+  (`[duplicates] skip_projects = true`).
+
 - GUI: la ventana se congelaba (más de 15 s con ~450 descargas pendientes) al rellenar
   tablas visibles con columnas autoajustables; ahora se miden una vez por relleno.
 - GUI: los avisos de cambio se agrupan, solo se recarga la vista visible, las consultas

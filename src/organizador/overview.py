@@ -10,9 +10,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import func, not_, select
 
-from organizador.app import AppContext, folder_pattern, learning_exclude
+from organizador.app import AppContext, duplicate_exclude, folder_pattern, learning_exclude
 from organizador.learning.dataset import find_project_dirs
 from organizador.learning.patterns import FolderPattern
 from organizador.learning.store import ModelInfo
@@ -98,7 +98,12 @@ def recoverable_from_index(ctx: AppContext, roots: Sequence[Path] | None = None)
                 func.count(func.distinct(File.device * 4294967296 + File.inode)).label("n"),
             )
             .join(Directory)
-            .where(File.content_hash.is_not(None), File.size > 0, under_roots(roots))
+            .where(
+                File.content_hash.is_not(None),
+                File.size > 0,
+                under_roots(roots),
+                not_(under_roots(duplicate_exclude(ctx, roots))),
+            )
             .group_by(File.content_hash, File.size)
             .subquery()
         )
