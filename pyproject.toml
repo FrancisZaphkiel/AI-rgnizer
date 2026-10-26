@@ -25,6 +25,7 @@ dependencies = [
     "python-magic>=0.4.27",
     "scikit-learn>=1.6",
     "joblib>=1.4",
+    "watchdog>=6.0",
 ]
 
 [project.scripts]

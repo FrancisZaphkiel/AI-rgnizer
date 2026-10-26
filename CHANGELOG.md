@@ -10,6 +10,12 @@ publicará al cerrar la Fase 4 (vigilancia de Descargas), según el plan.
 
 ### Añadido
 
+- **Vigilancia de Descargas** (`watch [--once] [--auto]`, `pending`, `accept`, `ignore`):
+  watchdog sobre `watched_dirs` con reconciliación periódica; una descarga cuenta cuando
+  no es temporal (`.part`, `.crdownload`, marcador vacío de Firefox) y su tamaño está
+  estable. Cola de sugerencias en la base de datos (tabla `suggestions`, migración 0005)
+  sin duplicados al reiniciar. Modo automático que solo mueve con reglas o probabilidad
+  calibrada ≥ `watch.auto_threshold`; aceptar una sugerencia mueve y aprende.
 - **Características por archivo** (caché en el índice): palabras, fechas, versión y marcas
   de copia del nombre; extensión, MIME (libmagic), tamaño, EXIF, metadatos PDF y de audio,
   y dominio de origen (`user.xdg.origin.url`).

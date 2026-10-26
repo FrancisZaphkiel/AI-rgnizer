@@ -5,7 +5,7 @@ tus carpetas, sugiere destinos para lo que llega a Descargas y detecta duplicado
 y reversible: nada se borra, solo se envía a la papelera.
 
 Estado: Fases 0–3 completas por CLI (núcleo, acciones seguras, duplicados y aprendizaje de
-costumbres); última versión publicada `v0.1.0`. Ver [`PLAN.md`](PLAN.md) y [`CHANGELOG.md`](CHANGELOG.md).
+costumbres); Fase 4 en curso (vigilancia de Descargas). Última versión publicada `v0.1.0`. Ver [`PLAN.md`](PLAN.md) y [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Instalación para desarrollo (CachyOS / Arch)
 
@@ -59,6 +59,31 @@ exclude = ["~/Documentos/camerapy"]   # carpetas que no reflejan tus costumbres
 
 [learning.type_destinations]          # destino inicial por tipo
 "tipo:image" = "~/Imágenes"
+```
+
+### Vigilancia de Descargas
+
+```fish
+uv run organizador watch              # vigila watched_dirs (por defecto, Descargas) hasta Ctrl+C
+uv run organizador watch --once       # revisa una vez y termina
+uv run organizador pending            # sugerencias pendientes con su id
+uv run organizador accept ID [--to CARPETA]   # mueve (se puede deshacer) y aprende
+uv run organizador ignore ID...       # el archivo se queda donde está
+```
+
+Solo se consideran los archivos directamente dentro de la carpeta vigilada, y solo cuando la
+descarga terminó: se ignoran `.part`, `.crdownload` y el marcador vacío de Firefox, y el
+tamaño debe mantenerse estable unos segundos. Cada archivo recibe una sola sugerencia
+aunque se reinicie la vigilancia. En modo automático (`--auto` o `mode = "auto"`) se mueve
+sin preguntar solo lo que decide una regla tuya, una regla aprendida o el modelo con
+probabilidad calibrada ≥ `auto_threshold`; el resto queda pendiente.
+
+```toml
+[watch]
+mode = "suggest"         # o "auto"
+auto_threshold = 0.9
+stable_seconds = 3.0
+reconcile_seconds = 300  # relectura completa por si inotify pierde eventos
 ```
 
 Nada sale del equipo (hay un test que bloquea los sockets de red) y el modelo solo sugiere:

@@ -100,6 +100,26 @@ class LearningSettings:
     exclude: list[str] = field(default_factory=list)
 
 
+WATCH_MODES = ("suggest", "auto")
+
+
+@dataclass(slots=True)
+class WatchSettings:
+    # "suggest": solo propone destinos; "auto": mueve si la confianza llega al umbral.
+    mode: str = "suggest"
+    # Probabilidad calibrada mínima para mover sin preguntar (solo reglas y modelo:
+    # los destinos por tipo o por nombre de carpeta no tienen probabilidad calibrada).
+    auto_threshold: float = 0.9
+    # Segundos sin cambios de tamaño ni mtime para dar una descarga por terminada.
+    stable_seconds: float = 3.0
+    # Cada cuánto se relee la carpeta entera por si inotify perdió eventos.
+    reconcile_seconds: float = 300.0
+
+    def __post_init__(self) -> None:
+        if self.mode not in WATCH_MODES:
+            raise ValueError(f"watch.mode debe ser uno de {WATCH_MODES}, no {self.mode!r}")
+
+
 @dataclass(slots=True)
 class Settings:
     indexed_dirs: list[Path] = field(default_factory=list)
@@ -108,6 +128,7 @@ class Settings:
     actions: ActionSettings = field(default_factory=ActionSettings)
     duplicates: DuplicateSettings = field(default_factory=DuplicateSettings)
     learning: LearningSettings = field(default_factory=LearningSettings)
+    watch: WatchSettings = field(default_factory=WatchSettings)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -125,6 +146,7 @@ class Settings:
             actions=ActionSettings(**data.get("actions", {})),
             duplicates=DuplicateSettings(**data.get("duplicates", {})),
             learning=LearningSettings(**data.get("learning", {})),
+            watch=WatchSettings(**data.get("watch", {})),
         )
 
 

@@ -61,3 +61,13 @@ def test_invalid_settings_fall_back_to_defaults(isolated_home: Path) -> None:
     app.ensure()
     app.config_file.write_text("esto no es = = toml", encoding="utf-8")
     assert load_settings(app) == Settings()
+
+
+def test_invalid_watch_mode_falls_back_to_defaults(isolated_home: Path) -> None:
+    from organizador.core.config import load_settings
+    from organizador.core.paths import AppPaths
+
+    paths = AppPaths.from_env()
+    paths.ensure()
+    paths.config_file.write_text('[watch]\nmode = "siempre"\n')
+    assert load_settings(paths).watch.mode == "suggest"

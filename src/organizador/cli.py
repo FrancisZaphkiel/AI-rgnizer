@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import argparse
 import logging
+import signal
 import sys
+import threading
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -17,6 +20,13 @@ from organizador import __version__
 from organizador.actions import ActionError, ActionService
 from organizador.core.config import Settings, load_settings
 from organizador.core.paths import AppPaths
+from organizador.downloads import (
+    DownloadMonitor,
+    Outcome,
+    SuggestionNotFoundError,
+    SuggestionQueue,
+)
+from organizador.downloads.queue import alternatives_of
 from organizador.duplicates import (
     DuplicateFinder,
     DuplicateGroup,
@@ -39,7 +49,13 @@ from organizador.learning.store import IncompatibleModelError, ModelNotFoundErro
 from organizador.scanner import Scanner, ScanStats
 from organizador.storage import Database
 from organizador.storage.index import under_roots
-from organizador.storage.models import Directory, Feedback, File
+from organizador.storage.models import (
+    Directory,
+    DownloadSuggestion,
+    Feedback,
+    File,
+    SuggestionState,
+)
 
 log = logging.getLogger("organizador")
 
@@ -744,6 +760,146 @@ def _add_learning_commands(add: Callable[[str, Command, str], argparse.ArgumentP
     revert.add_argument("version", type=int)
 
 
+def _classifier(ctx: AppContext) -> Callable[[FileFeatures], Prediction]:
+    """Decide destinos recargando el modelo cuando ``train`` o ``mv`` guardan otra versión."""
+    store = ctx.models()
+    loaded: dict[str, Any] = {"version": None, "model": None, "folders": _folder_names(ctx)}
+
+    def classify(features: FileFeatures) -> Prediction:
+        version = store.current_version()
+        if version != loaded["version"]:
+            loaded["version"] = version
+            loaded["model"] = _load_model(ctx) if version else None
+            loaded["folders"] = _folder_names(ctx)
+        return decide(features, loaded["model"], ctx.settings.learning, loaded["folders"])
+
+    return classify
+
+
+def _print_suggestion(row: DownloadSuggestion) -> None:
+    if row.state == SuggestionState.AUTO:
+        print(f"[{row.id}] {row.path}\n      movido a {row.chosen} ({row.confidence:.0%})")
+        return
+    print(f"[{row.id}] {row.path}")
+    if row.destination is None:
+        print("      sin clasificar: elige carpeta con «organizador accept ID --to CARPETA»")
+    else:
+        uncalibrated = row.source in {"configuración", "carpeta", "tipo"}
+        shown = "" if uncalibrated else f"{row.confidence:.0%}, "
+        print(f"      → {row.destination} ({shown}{_SOURCE_TEXT.get(row.source or '', '')})")
+    others = [label for label, _ in alternatives_of(row) if label != row.destination]
+    if others:
+        print("        otras: " + ", ".join(others[:2]))
+
+
+def _cmd_watch(ctx: AppContext, args: argparse.Namespace) -> int:
+    settings = ctx.settings.watch
+    if args.auto:
+        settings = replace(settings, mode="auto")
+    dirs = [d.expanduser() for d in (args.dirs or ctx.settings.watched_dirs)]
+    service = ctx.actions()
+
+    def mover(source: Path, folder: Path) -> str:
+        return service.move(source, folder).action_id
+
+    monitor = DownloadMonitor(dirs, settings, SuggestionQueue(ctx.db), _classifier(ctx), mover)
+
+    def show(outcome: Outcome) -> None:
+        _print_suggestion(outcome.suggestion)
+        sys.stdout.flush()
+
+    if args.once:
+        monitor.reconcile()
+        if monitor.waiting:
+            time.sleep(settings.stable_seconds)
+        for outcome in monitor.process(time.monotonic() + settings.stable_seconds):
+            show(outcome)
+        return 0
+    stop = threading.Event()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, lambda *_: stop.set())
+    mode = "automático" if settings.mode == "auto" else "solo sugerencias"
+    print(f"Vigilando {', '.join(map(str, monitor.dirs))} ({mode}). Ctrl+C para salir.")
+    monitor.run(stop, show)
+    return 0
+
+
+def _cmd_pending(ctx: AppContext, _args: argparse.Namespace) -> int:
+    queue = SuggestionQueue(ctx.db)
+    queue.expire_missing()
+    rows = queue.pending()
+    for row in rows:
+        _print_suggestion(row)
+    if not rows:
+        print("No hay sugerencias pendientes.")
+    return 0
+
+
+def _pending_row(ctx: AppContext, suggestion_id: int) -> DownloadSuggestion | None:
+    try:
+        row = SuggestionQueue(ctx.db).get(suggestion_id)
+    except SuggestionNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return None
+    if row.state != SuggestionState.PENDING:
+        print(f"error: la sugerencia {row.id} ya está resuelta ({row.state})", file=sys.stderr)
+        return None
+    return row
+
+
+def _cmd_accept(ctx: AppContext, args: argparse.Namespace) -> int:
+    row = _pending_row(ctx, args.id)
+    if row is None:
+        return 2
+    target = args.to.expanduser() if args.to else row.destination and Path(row.destination)
+    if not target:
+        print("error: sin destino sugerido; indica la carpeta con --to", file=sys.stderr)
+        return 2
+    source = Path(row.path)
+    if not source.is_file():
+        SuggestionQueue(ctx.db).resolve(row.id, SuggestionState.GONE)
+        print(f"error: {source} ya no existe", file=sys.stderr)
+        return 1
+    target.mkdir(parents=True, exist_ok=True)
+    features = extract_features(source)
+    result = ctx.actions().move(source, target)
+    SuggestionQueue(ctx.db).resolve(
+        row.id, SuggestionState.ACCEPTED, chosen=str(target), action_id=result.action_id
+    )
+    print(f"{result.action_id[:8]}  {result.source} → {result.destination}")
+    _record_choice(ctx, result.destination, result.destination.parent.resolve(), features)
+    return 0
+
+
+def _cmd_ignore(ctx: AppContext, args: argparse.Namespace) -> int:
+    code = 0
+    for suggestion_id in args.ids:
+        if _pending_row(ctx, suggestion_id) is None:
+            code = 2
+            continue
+        SuggestionQueue(ctx.db).resolve(suggestion_id, SuggestionState.IGNORED)
+        print(f"[{suggestion_id}] ignorada: el archivo se queda donde está")
+    return code
+
+
+def _add_watch_commands(add: Callable[[str, Command, str], argparse.ArgumentParser]) -> None:
+    p = add("watch", _cmd_watch, "vigila Descargas y sugiere destino a lo que llega")
+    p.add_argument("dirs", nargs="*", type=Path, help="por defecto, watched_dirs de config.toml")
+    p.add_argument("--once", action="store_true", help="revisa una vez y termina")
+    p.add_argument(
+        "--auto", action="store_true", help="mueve si la confianza llega a watch.auto_threshold"
+    )
+
+    add("pending", _cmd_pending, "sugerencias pendientes de las carpetas vigiladas")
+
+    p = add("accept", _cmd_accept, "mueve el archivo de una sugerencia y lo aprende")
+    p.add_argument("id", type=int)
+    p.add_argument("--to", type=Path, metavar="CARPETA", help="otra carpeta en vez de la sugerida")
+
+    p = add("ignore", _cmd_ignore, "descarta sugerencias (el archivo no se mueve)")
+    p.add_argument("ids", nargs="+", type=int)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="organizador", description=__doc__)
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -798,6 +954,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     _add_learning_commands(add)
+    _add_watch_commands(add)
 
     p = add("mv", _cmd_mv, "mueve un archivo a una carpeta (sin sobrescribir) y lo aprende")
     p.add_argument("source", type=Path)
