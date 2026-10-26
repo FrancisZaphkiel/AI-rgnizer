@@ -300,7 +300,7 @@ las que están mal y conviene repetir la evaluación tras limpiarlas.
 - [x] El diálogo de confirmación aparece siempre antes de enviar a papelera.
 - [x] La UI no se bloquea durante un escaneo largo (test con temporizador).
 - [x] "Borrar datos aprendidos" elimina BD y modelo.
-- [ ] Prueba manual en CachyOS (KDE Wayland): tema oscuro, bandeja, HiDPI.
+- [x] Prueba manual en CachyOS (KDE Wayland): tema oscuro, bandeja, HiDPI.
 
 **Release `v0.3.0`**
 

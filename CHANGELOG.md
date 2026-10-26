@@ -5,6 +5,10 @@ según [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+## [0.3.0] — 2026-10-26
+
+Fase 5: interfaz gráfica PySide6 con bandeja, y la CLI delegando en el servicio.
+
 ### Añadido
 
 - **Interfaz gráfica** (PySide6, extra opcional `gui`): `organizador gui [--hidden]` u
